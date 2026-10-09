@@ -49,8 +49,16 @@ set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 set +a
+export NITRO_PRESET=node
+export PORT=3000
+export HOST=0.0.0.0
+touch "$ENV_FILE"
+grep -q '^NITRO_PRESET=' "$ENV_FILE" && sed -i 's/^NITRO_PRESET=.*/NITRO_PRESET=node/' "$ENV_FILE" || echo 'NITRO_PRESET=node' >>"$ENV_FILE"
+grep -q '^HOST=' "$ENV_FILE" && sed -i 's/^HOST=.*/HOST=0.0.0.0/' "$ENV_FILE" || echo 'HOST=0.0.0.0' >>"$ENV_FILE"
+grep -q '^PORT=' "$ENV_FILE" && sed -i 's/^PORT=.*/PORT=3000/' "$ENV_FILE" || echo 'PORT=3000' >>"$ENV_FILE"
 npm ci
 npm run build
+test -f "$APP_DIR/.output/server/index.mjs"
 
 cat >/etc/systemd/system/blue-jaguars.service <<EOF
 [Unit]
@@ -71,6 +79,14 @@ systemctl daemon-reload
 systemctl enable --now blue-jaguars
 systemctl restart blue-jaguars
 systemctl disable --now nginx >/dev/null 2>&1 || true
+if command -v ufw >/dev/null && ufw status | grep -q 'Status: active'; then
+  ufw allow from 172.16.0.0/12 to any port 3000 proto tcp >/dev/null || true
+fi
 
-echo "App is on port 3000. In Nginx Proxy Manager, proxy ${DOMAIN} to 172.17.0.1 port 3000."
-curl -sI --max-time 5 http://127.0.0.1:3000 | head -5 || true
+echo "App is on port 3000."
+curl -sf --max-time 8 -o /dev/null http://127.0.0.1:3000/ || {
+  echo "The app did not answer. Last log:" >&2
+  journalctl -u blue-jaguars -n 40 --no-pager >&2 || true
+  exit 1
+}
+echo "In Nginx Proxy Manager, proxy www.bluejaguarskarate.com and bluejaguarskarate.com to 172.17.0.1 port 3000, then request an SSL certificate."
