@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 # First-time install on an Ubuntu Hostinger VPS. Run as root:
-#   bash scripts/vps-install.sh your-domain.com
+#   bash scripts/vps-install.sh www.bluejaguarskarate.com
 set -euo pipefail
 
-DOMAIN="${1:-}"
-if [[ -z "$DOMAIN" ]]; then
-  echo "Usage: bash scripts/vps-install.sh your-domain.com" >&2
-  exit 1
-fi
+DOMAIN="${1:-www.bluejaguarskarate.com}"
+APEX="${DOMAIN#www.}"
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$APP_DIR/.env"
@@ -76,6 +73,11 @@ systemctl restart blue-jaguars
 cat >/etc/nginx/sites-available/blue-jaguars <<EOF
 server {
   listen 80;
+  server_name ${APEX};
+  return 301 https://${DOMAIN}\$request_uri;
+}
+server {
+  listen 80;
   server_name ${DOMAIN};
   client_max_body_size 20m;
   location / {
@@ -91,7 +93,7 @@ nginx -t
 systemctl reload nginx
 
 if [[ ! -d /etc/letsencrypt/live/${DOMAIN} ]]; then
-  certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "erikedgington@gmail.com" || true
+  certbot --nginx -d "$DOMAIN" -d "$APEX" --non-interactive --agree-tos -m "erikedgington@gmail.com" --redirect || true
 fi
 
-echo "Blue Jaguars is running. Point ${DOMAIN} at this server, then open https://${DOMAIN}"
+echo "Blue Jaguars is running at https://${DOMAIN}"
