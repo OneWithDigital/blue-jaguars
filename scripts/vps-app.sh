@@ -9,7 +9,11 @@ APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$APP_DIR/.env"
 
 export DEBIAN_FRONTEND=noninteractive
-if ! command -v node >/dev/null || ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) < 22)'; then
+NODE_MAJOR=0
+if command -v node >/dev/null; then
+  NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])')"
+fi
+if [[ "$NODE_MAJOR" -lt 22 ]]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
 fi

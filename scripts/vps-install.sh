@@ -15,7 +15,11 @@ if [[ ! -f "$ENV_FILE" ]]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
   apt-get install -y nginx postgresql certbot python3-certbot-nginx ca-certificates curl
-  if ! command -v node >/dev/null || ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) < 22)'; then
+  NODE_MAJOR=0
+  if command -v node >/dev/null; then
+    NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])')"
+  fi
+  if [[ "$NODE_MAJOR" -lt 22 ]]; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y nodejs
   fi
