@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
+import { GROK_PROVIDERS, authClient, authEnabled, signIn, signInWithGoogle } from "@/lib/auth/client";
 import { errText } from "@/components/boot";
 
 export function LoginStage() {
@@ -14,7 +14,7 @@ export function LoginStage() {
     setError("");
     setBusy(true);
     try {
-      await signIn(providerId, { callbackURL: "/" });
+      await (providerId === "grok-google" ? signInWithGoogle("/") : signIn(providerId, { callbackURL: "/" }));
     } catch (cause) {
       setError(errText(cause));
       setBusy(false);

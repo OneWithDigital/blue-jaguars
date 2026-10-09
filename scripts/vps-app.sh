@@ -56,6 +56,7 @@ touch "$ENV_FILE"
 grep -q '^NITRO_PRESET=' "$ENV_FILE" && sed -i 's/^NITRO_PRESET=.*/NITRO_PRESET=node/' "$ENV_FILE" || echo 'NITRO_PRESET=node' >>"$ENV_FILE"
 grep -q '^HOST=' "$ENV_FILE" && sed -i 's/^HOST=.*/HOST=0.0.0.0/' "$ENV_FILE" || echo 'HOST=0.0.0.0' >>"$ENV_FILE"
 grep -q '^PORT=' "$ENV_FILE" && sed -i 's/^PORT=.*/PORT=3000/' "$ENV_FILE" || echo 'PORT=3000' >>"$ENV_FILE"
+grep -q '^BETTER_AUTH_URL=' "$ENV_FILE" && sed -i 's#^BETTER_AUTH_URL=.*#BETTER_AUTH_URL=https://bluejaguarskarate.com#' "$ENV_FILE" || echo 'BETTER_AUTH_URL=https://bluejaguarskarate.com' >>"$ENV_FILE"
 npm ci
 npm run build
 test -f "$APP_DIR/.output/server/index.mjs"
