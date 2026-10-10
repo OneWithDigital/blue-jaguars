@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Clapperboard, ExternalLink, Pencil, Play, Plus, Trash2, X } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { errText } from "@/components/boot";
 import { formatDay } from "@/lib/dojo";
 import {
@@ -12,6 +12,8 @@ import {
   deleteGalleryItem,
   getGallery,
   getGalleryFile,
+  disconnectYouTube,
+  getYouTubeLink,
   syncYouTubeNow,
   updateGalleryItem,
   upsertGalleryAlbum,
@@ -197,7 +199,7 @@ export function Gallery({ staff, athletes }: { staff: boolean; athletes: string[
       </div>
       <p className="mb-4 max-w-2xl text-sm text-mute">
         Anyone on the team can file photos. Full-length fights are too big to store here — paste the YouTube, Facebook, or file link. Short clips under 1.5 MB can be uploaded.
-        {" "}New public videos on the club YouTube channel are added to the YouTube channel album on their own.
+        {" "}New videos on the club YouTube channel are added to the YouTube channel album on their own.
       </p>
       {staff ? <YouTubeCheck /> : null}
       <div className="mb-4 flex flex-wrap gap-2">
@@ -1150,35 +1152,97 @@ function EditSheet({
   );
 }
 
+const CONNECT_NOTES: Record<string, string> = {
+  connected: "YouTube is connected. Public and unlisted videos will come in on their own.",
+  cancelled: "YouTube was not connected.",
+  expired: "That took too long. Try Connect YouTube again.",
+  denied: "Only the owner can connect YouTube.",
+  nochannel: "That Google account has no YouTube channel. Pick the account or brand account that owns the club channel.",
+  failed: "Google did not finish connecting. Try again in a minute.",
+};
+
 function YouTubeCheck() {
   const queryClient = useQueryClient();
+  const [note, setNote] = useState("");
+  const link = useQuery({ queryKey: ["youtube-link"], queryFn: () => getYouTubeLink() });
+
+  useEffect(() => {
+    // Back from Google: show the result once, then tidy the address bar.
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("youtube");
+    if (!result) return;
+    setNote(CONNECT_NOTES[result] ?? "");
+    params.delete("youtube");
+    const rest = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+  }, []);
+
   const check = useMutation({
     mutationFn: () => syncYouTubeNow(),
     onSuccess: async () => {
+      setNote("");
       await queryClient.invalidateQueries({ queryKey: ["gallery"] });
+      await queryClient.invalidateQueries({ queryKey: ["youtube-link"] });
     },
   });
+  const disconnect = useMutation({
+    mutationFn: () => disconnectYouTube(),
+    onSuccess: async () => {
+      setNote("YouTube is disconnected. Only public videos will come in now.");
+      await queryClient.invalidateQueries({ queryKey: ["youtube-link"] });
+    },
+  });
+
+  const info = link.data;
   const result = check.data;
+  const button = "min-h-11 rounded-full border border-line px-4 text-sm text-mute disabled:opacity-60";
+  let message = note;
+  if (result) {
+    if (result.status === "reconnect") {
+      message = "YouTube access has expired. The owner needs to press Connect YouTube again.";
+    } else if (result.status === "none") {
+      message = info?.connected
+        ? "No public or unlisted videos on the channel yet."
+        : "The channel has no public videos yet. Connect YouTube to bring in unlisted videos too.";
+    } else {
+      const parts: string[] = [];
+      if (result.added) parts.push(`Added ${result.added} new ${result.added === 1 ? "video" : "videos"}.`);
+      if (result.removed) parts.push(`Took down ${result.removed} that ${result.removed === 1 ? "is" : "are"} now private.`);
+      message = parts.length ? parts.join(" ") : "Up to date. No new videos.";
+    }
+  }
+
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-3">
-      <button
-        type="button"
-        disabled={check.isPending}
-        onClick={() => check.mutate()}
-        className="min-h-11 rounded-full border border-line px-4 text-sm text-mute disabled:opacity-60"
-      >
-        {check.isPending ? "Checking YouTube…" : "Check YouTube now"}
-      </button>
-      {check.isError ? <span className="text-sm text-gold">{errText(check.error)}</span> : null}
-      {result ? (
-        <span className="text-sm text-mute">
-          {result.status === "none"
-            ? "The channel has no public videos yet. Unlisted and private videos are not picked up."
-            : result.added
-              ? `Added ${result.added} new ${result.added === 1 ? "video" : "videos"}.`
-              : "Up to date. No new videos."}
-        </span>
-      ) : null}
+    <div className="mb-4 rounded-2xl border border-line p-4">
+      <p className="mb-3 text-sm text-mute">
+        {info?.connected
+          ? `YouTube connected${info.account ? ` to ${info.account}` : ""}. Public and unlisted videos come in on their own. Private videos never show here.`
+          : "Only public YouTube videos come in right now. Connect the club channel to bring in unlisted videos too."}
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" disabled={check.isPending} onClick={() => check.mutate()} className={button}>
+          {check.isPending ? "Checking YouTube…" : "Check YouTube now"}
+        </button>
+        {info?.owner ? (
+          info.connected ? (
+            <button
+              type="button"
+              disabled={disconnect.isPending}
+              onClick={() => disconnect.mutate()}
+              className={button}
+            >
+              {disconnect.isPending ? "Disconnecting…" : "Disconnect YouTube"}
+            </button>
+          ) : (
+            <a href="/api/youtube/connect" className="inline-flex min-h-11 items-center rounded-full bg-blue px-4 text-sm font-semibold text-ink">
+              Connect YouTube
+            </a>
+          )
+        ) : null}
+      </div>
+      {check.isError ? <p className="mt-2 text-sm text-gold">{errText(check.error)}</p> : null}
+      {disconnect.isError ? <p className="mt-2 text-sm text-gold">{errText(disconnect.error)}</p> : null}
+      {message ? <p className="mt-2 text-sm text-mute">{message}</p> : null}
     </div>
   );
 }
