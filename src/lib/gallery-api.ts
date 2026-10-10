@@ -159,10 +159,11 @@ async function assertAlbum(id: number): Promise<void> {
 }
 
 // ---------- YouTube channel import ----------
-// Public videos on the club channel are pulled from YouTube's RSS feed (no API
-// key) into a "YouTube channel" album. Checked at most every 30 minutes when
-// someone opens Film; admins can force a check. Unlisted and private videos are
-// not in the feed.
+// Club channel videos go into a "YouTube channel" album. Once the owner connects
+// the channel with Google, uploads are read through the YouTube Data API so
+// public and unlisted videos both come in (never private). Before that, public
+// videos come from the RSS feed. Checked at most every 30 minutes when someone
+// opens Film; admins can force a check.
 const YOUTUBE_REFRESH_MS = 30 * 60 * 1000;
 
 type FeedVideo = { id: string; title: string; description: string; published: string };
@@ -213,43 +214,116 @@ async function youtubeAlbumId(): Promise<number> {
   if (found[0]) return asNum(found[0].id);
   const made = await sql<{ id: number }>`
     insert into gallery_albums (title, event_date, notes, is_sample, source)
-    values ('YouTube channel', null, 'New public videos from the club YouTube channel show up here on their own.', false, 'youtube')
+    values ('YouTube channel', null, 'New videos from the club YouTube channel show up here on their own.', false, 'youtube')
     returning id
   `;
   return asNum(made[0]?.id);
 }
 
-export async function syncYouTube(force = false): Promise<{ added: number; status: "ok" | "none" | "skipped" | "off" }> {
+type YouTubeStatus = "ok" | "none" | "skipped" | "off" | "reconnect";
+
+async function saveVideo(albumId: number, video: { id: string; title: string; description: string; published: string }): Promise<boolean> {
   const sql = await getSql();
-  const rows = await sql<{ channel: string; synced: string | null }>`
-    select youtube_channel_id as channel, youtube_synced_at::text as synced from dojo_settings where id = 1
+  const published = Number.isNaN(Date.parse(video.published)) ? new Date().toISOString() : video.published;
+  const inserted = await sql<{ id: number }>`
+    insert into gallery_items
+      (album_id, kind, title, caption, poster, video_url, is_sample, added_by, youtube_id, created_at)
+    select ${albumId}, 'video', ${video.title}, ${video.description},
+           ${`https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`},
+           ${`https://www.youtube.com/watch?v=${video.id}`}, false, 'youtube', ${video.id}, ${published}
+    where not exists (select 1 from gallery_items where youtube_id = ${video.id})
+    returning id
+  `;
+  return Boolean(inserted[0]);
+}
+
+/**
+ * Connected channel: read uploads through the YouTube Data API so unlisted
+ * videos come in too. Private videos are never shown, and a video switched to
+ * private on YouTube is taken back off the site.
+ */
+async function syncConnected(sealed: string): Promise<{ added: number; removed: number; status: YouTubeStatus }> {
+  const yt = await import("./youtube.server");
+  const sql = await getSql();
+  const refresh = yt.openToken(sealed);
+  if (!refresh) return { added: 0, removed: 0, status: "reconnect" };
+  try {
+    const access = await yt.accessFromRefresh(refresh);
+    const channel = await yt.myChannel(access);
+    if (!channel) return { added: 0, removed: 0, status: "reconnect" };
+    const videos = await yt.channelVideos(access, channel.uploads);
+    let removed = 0;
+    const hidden = videos.filter((video) => video.privacy === "private").map((video) => video.id);
+    for (const id of hidden) {
+      const gone = await sql<{ id: number }>`delete from gallery_items where youtube_id = ${id} and added_by = 'youtube' returning id`;
+      removed += gone.length;
+    }
+    const shown = videos.filter((video) => video.privacy !== "private");
+    if (!shown.length) return { added: 0, removed, status: removed ? "ok" : "none" };
+    const albumId = await youtubeAlbumId();
+    let added = 0;
+    for (const video of [...shown].reverse()) {
+      if (await saveVideo(albumId, video)) added += 1;
+    }
+    return { added, removed, status: "ok" };
+  } catch (error) {
+    if (error instanceof yt.YouTubeReconnect) return { added: 0, removed: 0, status: "reconnect" };
+    throw error;
+  }
+}
+
+export async function syncYouTube(force = false): Promise<{ added: number; removed: number; status: YouTubeStatus }> {
+  const sql = await getSql();
+  const rows = await sql<{ channel: string; synced: string | null; token: string }>`
+    select youtube_channel_id as channel, youtube_synced_at::text as synced, youtube_token as token
+    from dojo_settings where id = 1
   `;
   const channel = (rows[0]?.channel ?? "").trim();
-  if (!channel) return { added: 0, status: "off" };
+  const token = rows[0]?.token ?? "";
+  if (!channel && !token) return { added: 0, removed: 0, status: "off" };
   const last = rows[0]?.synced ? Date.parse(rows[0].synced) : 0;
-  if (!force && last && Date.now() - last < YOUTUBE_REFRESH_MS) return { added: 0, status: "skipped" };
+  if (!force && last && Date.now() - last < YOUTUBE_REFRESH_MS) return { added: 0, removed: 0, status: "skipped" };
   // Stamp first so parallel page loads don't all call YouTube.
   await sql`update dojo_settings set youtube_synced_at = now() where id = 1`;
+  if (token) return syncConnected(token);
   const feed = await fetchChannelFeed(channel);
-  if (feed === "none") return { added: 0, status: "none" };
-  if (!feed.length) return { added: 0, status: "ok" };
+  if (feed === "none") return { added: 0, removed: 0, status: "none" };
+  if (!feed.length) return { added: 0, removed: 0, status: "ok" };
   const albumId = await youtubeAlbumId();
   let added = 0;
   for (const video of [...feed].reverse()) {
-    const published = Number.isNaN(Date.parse(video.published)) ? new Date().toISOString() : video.published;
-    const inserted = await sql<{ id: number }>`
-      insert into gallery_items
-        (album_id, kind, title, caption, poster, video_url, is_sample, added_by, youtube_id, created_at)
-      select ${albumId}, 'video', ${video.title}, ${video.description},
-             ${`https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`},
-             ${`https://www.youtube.com/watch?v=${video.id}`}, false, 'youtube', ${video.id}, ${published}
-      where not exists (select 1 from gallery_items where youtube_id = ${video.id})
-      returning id
-    `;
-    if (inserted[0]) added += 1;
+    if (await saveVideo(albumId, video)) added += 1;
   }
-  return { added, status: "ok" };
+  return { added, removed: 0, status: "ok" };
 }
+
+export type YouTubeLink = { connected: boolean; account: string; owner: boolean };
+
+export const getYouTubeLink = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<YouTubeLink> => {
+    const role = await requireMember(context.userId);
+    if (role === "member") throw new Error("Only admins can see this");
+    const sql = await getSql();
+    const rows = await sql<{ token: string; account: string }>`
+      select youtube_token as token, youtube_account as account from dojo_settings where id = 1
+    `;
+    return { connected: Boolean(rows[0]?.token), account: rows[0]?.account ?? "", owner: role === "owner" };
+  });
+
+export const disconnectYouTube = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const role = await requireMember(context.userId);
+    if (role !== "owner") throw new Error("Only the owner can change this");
+    const yt = await import("./youtube.server");
+    const sql = await getSql();
+    const rows = await sql<{ token: string }>`select youtube_token as token from dojo_settings where id = 1`;
+    const refresh = rows[0]?.token ? yt.openToken(rows[0].token) : null;
+    if (refresh) await yt.revokeToken(refresh);
+    await sql`update dojo_settings set youtube_token = '', youtube_account = '' where id = 1`;
+    return { ok: true };
+  });
 
 export const syncYouTubeNow = createServerFn({ method: "POST" })
   .middleware([authMiddleware])

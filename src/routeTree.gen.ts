@@ -14,6 +14,8 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiYoutubeCallbackRouteImport } from './routes/api/youtube/callback'
+import { Route as ApiYoutubeConnectRouteImport } from './routes/api/youtube/connect'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +42,16 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiYoutubeCallbackRoute = ApiYoutubeCallbackRouteImport.update({
+  id: '/api/youtube/callback',
+  path: '/api/youtube/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiYoutubeConnectRoute = ApiYoutubeConnectRouteImport.update({
+  id: '/api/youtube/connect',
+  path: '/api/youtube/connect',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +59,8 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
+  '/api/youtube/connect': typeof ApiYoutubeConnectRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +68,8 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
+  '/api/youtube/connect': typeof ApiYoutubeConnectRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +78,37 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
+  '/api/youtube/connect': typeof ApiYoutubeConnectRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/login' | '/privacy' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/app'
+    | '/login'
+    | '/privacy'
+    | '/api/auth/$'
+    | '/api/youtube/callback'
+    | '/api/youtube/connect'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app' | '/login' | '/privacy' | '/api/auth/$'
-  id: '__root__' | '/' | '/app' | '/login' | '/privacy' | '/api/auth/$'
+  to:
+    | '/'
+    | '/app'
+    | '/login'
+    | '/privacy'
+    | '/api/auth/$'
+    | '/api/youtube/callback'
+    | '/api/youtube/connect'
+  id:
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/login'
+    | '/privacy'
+    | '/api/auth/$'
+    | '/api/youtube/callback'
+    | '/api/youtube/connect'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,6 +117,8 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiYoutubeCallbackRoute: typeof ApiYoutubeCallbackRoute
+  ApiYoutubeConnectRoute: typeof ApiYoutubeConnectRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,6 +158,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/youtube/callback': {
+      id: '/api/youtube/callback'
+      path: '/api/youtube/callback'
+      fullPath: '/api/youtube/callback'
+      preLoaderRoute: typeof ApiYoutubeCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/youtube/connect': {
+      id: '/api/youtube/connect'
+      path: '/api/youtube/connect'
+      fullPath: '/api/youtube/connect'
+      preLoaderRoute: typeof ApiYoutubeConnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -125,6 +181,8 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiYoutubeCallbackRoute: ApiYoutubeCallbackRoute,
+  ApiYoutubeConnectRoute: ApiYoutubeConnectRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
