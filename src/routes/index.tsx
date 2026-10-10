@@ -18,8 +18,8 @@ function Home() {
     setSeen(sessionStorage.getItem("bj-intro") === "1");
   }, []);
 
-  if (isPending || seen === null) return <Boot />;
-  if (user) return <MemberDoor />;
+  if (seen === null) return <Boot />;
+  // The splash plays once per browser session for everyone, signed in or not.
   if (!seen) {
     return (
       <IntroFilm
@@ -30,6 +30,8 @@ function Home() {
       />
     );
   }
+  if (isPending) return <Boot />;
+  if (user) return <MemberDoor />;
   return <LoginStage />;
 }
 
