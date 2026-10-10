@@ -99,6 +99,56 @@ export function currentWeek<T extends { week_start: string }>(weeks: T[], today 
   return running ?? sorted.find((week) => week.week_start > today) ?? sorted.at(-1) ?? null;
 }
 
+export function weekdayOf(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1).getDay();
+}
+
+export type ScheduledClass = {
+  id: number;
+  weekday: number;
+  start_time: string;
+  one_off_date: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
+};
+
+export type ClassSkip = { class_id: number; day: string };
+
+/** Is this weekly class's run active on this date (ignores skips)? */
+export function weeklyRunsOn(row: ScheduledClass, iso: string): boolean {
+  if (row.one_off_date) return false;
+  if (row.weekday !== weekdayOf(iso)) return false;
+  if (row.starts_on && iso < row.starts_on) return false;
+  if (row.ends_on && iso > row.ends_on) return false;
+  return true;
+}
+
+export function isSkipped(skips: ClassSkip[], classId: number, iso: string): boolean {
+  return skips.some((skip) => skip.class_id === classId && skip.day === iso);
+}
+
+/** Classes on the floor on a date: one-offs for that date plus weekly runs not skipped, by start time. */
+export function classesOn<T extends ScheduledClass>(classes: T[], skips: ClassSkip[], iso: string): T[] {
+  return classes
+    .filter((row) => row.one_off_date === iso || (weeklyRunsOn(row, iso) && !isSkipped(skips, row.id, iso)))
+    .sort((a, b) => a.start_time.localeCompare(b.start_time));
+}
+
+/** The 7 dates (Sun..Sat) of the week containing `iso`, shifted by `offset` weeks. */
+export function weekOf(iso: string, offset = 0): string[] {
+  const start = addDaysISO(iso, -weekdayOf(iso) + offset * 7);
+  return Array.from({ length: 7 }, (_, index) => addDaysISO(start, index));
+}
+
+/** Instructor names are stored comma separated. */
+export function splitNames(value: string): string[] {
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 export function formatDay(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   if (!y || !m || !d) return iso;
