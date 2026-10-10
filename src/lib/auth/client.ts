@@ -72,7 +72,7 @@ function setBearerToken(token: string | null): void {
  * host, where a full-page redirect to the broker can't work — so sign-in uses a
  * popup there and a normal redirect everywhere else.
  */
-function inLivePreview(): boolean {
+export function inLivePreview(): boolean {
   return (
     typeof window !== "undefined" &&
     window.location.hostname.endsWith(".grok-sandbox.com")

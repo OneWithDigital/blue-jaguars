@@ -741,6 +741,18 @@ export const deleteStudent = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     await requireStaff(context.userId);
     const sql = await getSql();
+    const rows = await sql<{ student_name: string }>`select student_name from students where id = ${data}`;
+    const name = rows[0]?.student_name;
+    // Placements are keyed by name, not id, so they do not cascade. Remove them
+    // with the athlete, unless another roster entry shares the same name.
+    if (name) {
+      const twins = await sql<{ n: number }>`
+        select count(*)::int as n from students where student_name = ${name} and id <> ${data}
+      `;
+      if (!asNum(twins[0]?.n)) {
+        await sql`delete from mskc_results where student_name = ${name}`;
+      }
+    }
     await sql`delete from students where id = ${data}`;
     return { ok: true };
   });

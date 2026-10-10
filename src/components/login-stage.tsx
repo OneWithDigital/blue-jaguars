@@ -1,8 +1,12 @@
-import { useState, type FormEvent } from "react";
-import { GROK_PROVIDERS, authClient, authEnabled, signIn, signInWithGoogle } from "@/lib/auth/client";
+import { useEffect, useState, type FormEvent } from "react";
+import { GROK_PROVIDERS, authClient, authEnabled, inLivePreview, signIn, signInWithGoogle } from "@/lib/auth/client";
 import { errText } from "@/components/boot";
 
 export function LoginStage() {
+  // Off the Grok preview only Google works (X has no app of our own yet).
+  const [preview, setPreview] = useState(false);
+  useEffect(() => setPreview(inLivePreview()), []);
+  const providers = GROK_PROVIDERS.filter((provider) => preview || provider.providerId === "grok-google");
   const [mode, setMode] = useState<"in" | "up">("in");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -57,7 +61,7 @@ export function LoginStage() {
           </p>
           {authEnabled ? (
             <div className="mt-6 space-y-3">
-              {GROK_PROVIDERS.map((provider) => (
+              {providers.map((provider) => (
                 <button
                   key={provider.providerId}
                   type="button"
@@ -141,6 +145,9 @@ export function LoginStage() {
               >
                 Replay the intro
               </button>
+              <a href="/privacy" className="block text-sm text-mute underline-offset-4 hover:underline">
+                Privacy
+              </a>
             </div>
           ) : (
             <p className="mt-6 text-sm text-mute">Sign-in is not turned on.</p>
