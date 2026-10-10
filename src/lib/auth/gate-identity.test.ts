@@ -378,10 +378,26 @@ describe("gateIdentityFromHeaders", () => {
 });
 
 describe("gateIdentityEnabled", () => {
-  it("is enabled by default with no gate env vars", () => {
+  it("is disabled when self-hosted (no Grok project id)", () => {
+    const saved = process.env.GROK_PROJECT_ID;
     delete process.env.GROK_PROJECT_ID;
     delete process.env.GROK_GATE_ORIGIN;
-    assert.equal(gateIdentityEnabled(), true);
+    try {
+      assert.equal(gateIdentityEnabled(), false);
+    } finally {
+      if (saved !== undefined) process.env.GROK_PROJECT_ID = saved;
+    }
+  });
+
+  it("is enabled on Grok hosting (GROK_PROJECT_ID set)", () => {
+    const saved = process.env.GROK_PROJECT_ID;
+    process.env.GROK_PROJECT_ID = "proj-123";
+    try {
+      assert.equal(gateIdentityEnabled(), true);
+    } finally {
+      if (saved === undefined) delete process.env.GROK_PROJECT_ID;
+      else process.env.GROK_PROJECT_ID = saved;
+    }
   });
 
   it("is disabled when VITE_AUTH_ENABLED is false", () => {

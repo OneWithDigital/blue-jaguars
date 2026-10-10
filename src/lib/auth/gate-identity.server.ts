@@ -27,7 +27,10 @@ export type GateJwks = { keys: JWK[] };
 export type JwksFetch = (url: string) => Promise<GateJwks | null>;
 
 export function gateIdentityEnabled(): boolean {
-  return env("VITE_AUTH_ENABLED") !== "false";
+  if (env("VITE_AUTH_ENABLED") === "false") return false;
+  // The Grok gate only exists on Grok hosting (sandbox preview or a project id).
+  // Self-hosted (the VPS) never trusts gate headers.
+  return isWorkspacePreview() || Boolean(env("GROK_PROJECT_ID"));
 }
 
 export function gateTokenAudience(): string {
