@@ -40,6 +40,7 @@ import {
   circuitDivisions,
   clock,
   countMedals,
+  currentWeek,
   formatDay,
   isStaff,
   localDateISO,
@@ -471,7 +472,7 @@ function Home({ data }: { data: PortalData }) {
   const upcoming = nextSession(data.classes);
   const today = localDateISO();
   const nextEvent = data.tournaments.find((event) => event.event_date >= today) ?? null;
-  const cleaning = data.cleaning.find((week) => week.week_start >= today) ?? data.cleaning.at(-1) ?? null;
+  const cleaning = currentWeek(data.cleaning, today);
   const leaders = useMemo(() => {
     const totals = new Map<string, number>();
     for (const row of data.results) totals.set(row.student_name, (totals.get(row.student_name) ?? 0) + row.points);
@@ -816,6 +817,7 @@ function Standings({ data }: { data: PortalData }) {
 function Cleaning({ data, embedded = false }: { data: PortalData; embedded?: boolean }) {
   const staff = isStaff(data.role);
   const today = localDateISO();
+  const currentId = currentWeek(data.cleaning, today)?.id ?? null;
   const save = useSave<{ id: number }>((id) => toggleCleaning({ data: id }));
   const action = staff ? <CleaningEditor /> : null;
   return (
@@ -825,7 +827,7 @@ function Cleaning({ data, embedded = false }: { data: PortalData; embedded?: boo
       {data.cleaning.length ? (
         <ul className="space-y-3">
           {data.cleaning.map((week) => {
-            const current = week.week_start >= today && !data.cleaning.some((other) => other.week_start >= today && other.week_start < week.week_start);
+            const current = week.id === currentId;
             return (
               <li key={week.id} className={"rounded-2xl border px-4 py-4 " + (current ? "border-gold bg-panel" : "border-line bg-panel")}>
                 <div className="flex flex-wrap items-start justify-between gap-3">

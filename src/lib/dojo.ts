@@ -84,6 +84,21 @@ export function localDateISO(date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
+export function addDaysISO(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return localDateISO(new Date(y, (m || 1) - 1, (d || 1) + days));
+}
+
+/**
+ * The cleaning week that covers today (started on or before today, less than
+ * 7 days ago). Falls back to the next upcoming week, then the last one listed.
+ */
+export function currentWeek<T extends { week_start: string }>(weeks: T[], today = localDateISO()): T | null {
+  const sorted = [...weeks].sort((a, b) => a.week_start.localeCompare(b.week_start));
+  const running = sorted.filter((week) => week.week_start <= today && today < addDaysISO(week.week_start, 7)).at(-1);
+  return running ?? sorted.find((week) => week.week_start > today) ?? sorted.at(-1) ?? null;
+}
+
 export function formatDay(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   if (!y || !m || !d) return iso;
