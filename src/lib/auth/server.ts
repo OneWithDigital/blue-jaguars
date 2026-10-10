@@ -239,7 +239,22 @@ export const auth = betterAuth({
   // Domain), so we drop its auto prefix (`useSecureCookies: false`) and set
   // Secure + the names ourselves. (Browsers allow Secure cookies on
   // `http://localhost`, so local dev still works.)
+  // Always on (Better Auth only enables it when NODE_ENV=production, which the
+  // VPS service does not set). Password sign-in and sign-up are tighter.
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 100,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 5 },
+      "/sign-up/email": { window: 60, max: 3 },
+    },
+  },
+
   advanced: {
+    // Nginx Proxy Manager sets X-Real-IP to the connecting address; clients can
+    // prepend fake entries to X-Forwarded-For, so rate limits key on this.
+    ipAddress: { ipAddressHeaders: ["x-real-ip", "x-forwarded-for"] },
     useSecureCookies: false,
     defaultCookieAttributes: { secure: true, sameSite: "lax", path: "/" },
     cookies: {

@@ -1540,6 +1540,9 @@ function SettingsForm({ settings }: { settings: PortalData["settings"] }) {
         <textarea value={form.about} onChange={(event) => set("about", event.target.value)} className={field + " min-h-28"} />
       </label>
       <Field label="Admin code" value={form.instructor_code} onChange={(value) => set("instructor_code", value.toUpperCase())} />
+      <p className="text-xs text-mute sm:col-span-2">
+        Codes need at least 8 letters, numbers, or dashes, like JAGUAR-2026. After 5 wrong tries a person waits 15 minutes.
+      </p>
       <div className="flex items-end">
         <button type="submit" disabled={save.isPending} className="min-h-11 rounded-lg bg-blue px-4 py-2 font-semibold text-ink disabled:opacity-60">
           {save.isPending ? "Saving…" : "Save desk"}

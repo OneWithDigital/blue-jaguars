@@ -177,6 +177,25 @@ function obj(input: unknown): Record<string, unknown> {
   return input as Record<string, unknown>;
 }
 
+function webLinkOrEmpty(value: unknown): string {
+  const raw = text(value, 300);
+  if (!raw) return "";
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("The event page needs a full web address, including https://");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("The event page must be an http or https link");
+  return url.toString();
+}
+
+function ratingOrEmpty(value: unknown): string {
+  const raw = text(value, 8).toUpperCase();
+  if (raw && raw !== "AAA" && raw !== "AA" && raw !== "A") throw new Error("Rating is AAA, AA, or A");
+  return raw;
+}
+
 function idOf(input: unknown): number {
   const id = asNum(obj(input).id);
   if (!Number.isInteger(id) || id <= 0) throw new Error("Missing id");
@@ -198,9 +217,14 @@ async function claimOwner(sql: Awaited<ReturnType<typeof getSql>>, userId: strin
   const settings = await sql<{ owner_email: string }>`select owner_email from dojo_settings where id = 1`;
   const owner = (settings[0]?.owner_email ?? "").trim().toLowerCase();
   if (!owner) return;
-  const users = await sql<{ email: string }>`select email from "user" where id = ${userId} limit 1`;
+  // Only a provider-verified email (Google) can claim the owner seat. Email and
+  // password sign-up does not verify addresses, so anyone could register the
+  // owner's email there.
+  const users = await sql<{ email: string; verified: boolean }>`
+    select email, "emailVerified" as verified from "user" where id = ${userId} limit 1
+  `;
   const email = (users[0]?.email ?? "").trim().toLowerCase();
-  if (!email || email !== owner) return;
+  if (!email || email !== owner || !asBool(users[0]?.verified)) return;
   await sql`
     insert into dojo_members (user_id, role) values (${userId}, 'owner')
     on conflict (user_id) do update set role = 'owner'
@@ -250,6 +274,30 @@ export const getMembership = createServerFn({ method: "GET" })
     return { joined: true as const, role };
   });
 
+// Wrong team-code attempts per signed-in user, so codes cannot be guessed.
+const JOIN_WINDOW_MS = 15 * 60 * 1000;
+const JOIN_MAX_MISSES = 5;
+const joinMisses = new Map<string, { count: number; since: number }>();
+
+function assertJoinAllowed(userId: string): void {
+  const entry = joinMisses.get(userId);
+  if (!entry) return;
+  if (Date.now() - entry.since > JOIN_WINDOW_MS) {
+    joinMisses.delete(userId);
+    return;
+  }
+  if (entry.count >= JOIN_MAX_MISSES) {
+    throw new Error("Too many wrong codes. Wait 15 minutes, or ask an instructor for the code.");
+  }
+}
+
+function recordJoinMiss(userId: string): void {
+  const now = Date.now();
+  const entry = joinMisses.get(userId);
+  if (!entry || now - entry.since > JOIN_WINDOW_MS) joinMisses.set(userId, { count: 1, since: now });
+  else entry.count += 1;
+}
+
 export const joinDojo = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => {
@@ -258,6 +306,7 @@ export const joinDojo = createServerFn({ method: "POST" })
     return { code };
   })
   .handler(async ({ context, data }) => {
+    assertJoinAllowed(context.userId);
     const sql = await getSql();
     const settings = await sql<{ member_code: string; instructor_code: string }>`
       select member_code, instructor_code from dojo_settings where id = 1
@@ -268,7 +317,11 @@ export const joinDojo = createServerFn({ method: "POST" })
     let role: Role | null = null;
     if (entered === row.instructor_code.trim().toUpperCase()) role = "instructor";
     else if (entered === row.member_code.trim().toUpperCase()) role = "member";
-    if (!role) throw new Error("That code does not match");
+    if (!role) {
+      recordJoinMiss(context.userId);
+      throw new Error("That code does not match");
+    }
+    joinMisses.delete(context.userId);
     const existing = await roleFor(context.userId);
     if (!existing) {
       await sql`
@@ -421,6 +474,13 @@ export const updateSettings = createServerFn({ method: "POST" })
     const member_code = required(raw.member_code, "Parent code", 40).toUpperCase();
     const instructor_code = required(raw.instructor_code, "Instructor code", 40).toUpperCase();
     if (member_code === instructor_code) throw new Error("The two codes need to be different");
+    for (const [label, code] of [
+      ["Parent code", member_code],
+      ["Admin code", instructor_code],
+    ] as const) {
+      if (code.length < 8) throw new Error(`${label} needs at least 8 characters so it can't be guessed`);
+      if (!/^[A-Z0-9-]+$/.test(code)) throw new Error(`${label} can use letters, numbers, and dashes only`);
+    }
     return {
       name: required(raw.name, "Team name", 80),
       city: required(raw.city, "City", 80),
@@ -512,10 +572,10 @@ export const upsertTournament = createServerFn({ method: "POST" })
       id,
       name: required(raw.name, "Event", 120),
       event_date,
-      rating: text(raw.rating, 8),
+      rating: ratingOrEmpty(raw.rating),
       presenter: text(raw.presenter, 120),
       venue: text(raw.venue, 180),
-      info_url: text(raw.info_url, 300),
+      info_url: webLinkOrEmpty(raw.info_url),
       notes: text(raw.notes, 400),
     };
   })
