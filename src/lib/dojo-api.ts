@@ -28,7 +28,12 @@ export type ClassSession = {
   ages: string;
   focus: string;
   is_sample: boolean;
+  one_off_date: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
 };
+
+export type ClassSkipRow = { class_id: number; day: string };
 
 export type Tournament = {
   id: number;
@@ -139,6 +144,7 @@ export type PortalData = {
   role: Role;
   settings: Settings;
   classes: ClassSession[];
+  skips: ClassSkipRow[];
   tournaments: Tournament[];
   cleaning: CleaningWeek[];
   instructors: Instructor[];
@@ -349,9 +355,16 @@ export const getPortal = createServerFn({ method: "GET" })
     const settings = settingsRows[0];
     if (!settings) throw new Error("The dojo is not set up yet");
     const classes = await sql<ClassSession>`
-      select id, weekday, start_time, end_time, title, room, instructor, ages, focus, is_sample
+      select id, weekday, start_time, end_time, title, room, instructor, ages, focus, is_sample,
+             one_off_date::text as one_off_date, starts_on::text as starts_on, ends_on::text as ends_on
       from class_sessions
+      where one_off_date is null or one_off_date >= current_date - 7
       order by weekday, start_time, id
+    `;
+    const skips = await sql<ClassSkipRow>`
+      select class_id, day::text as day from class_skips
+      where day >= current_date - 7
+      order by day, class_id
     `;
     const tournaments = await sql<Tournament>`
       select id, name, event_date::text as event_date, rating, presenter, venue, info_url, notes, is_sample
@@ -435,7 +448,16 @@ export const getPortal = createServerFn({ method: "GET" })
     return {
       role,
       settings: visibleSettings,
-      classes: classes.map((row) => ({ ...row, id: asNum(row.id), weekday: asNum(row.weekday), is_sample: asBool(row.is_sample) })),
+      classes: classes.map((row) => ({
+        ...row,
+        id: asNum(row.id),
+        weekday: asNum(row.weekday),
+        is_sample: asBool(row.is_sample),
+        one_off_date: row.one_off_date || null,
+        starts_on: row.starts_on || null,
+        ends_on: row.ends_on || null,
+      })),
+      skips: skips.map((row) => ({ class_id: asNum(row.class_id), day: row.day })),
       tournaments: tournaments.map((row) => ({ ...row, id: asNum(row.id), is_sample: asBool(row.is_sample) })),
       cleaning: cleaning.map((row) => ({ ...row, id: asNum(row.id), done: asBool(row.done), is_sample: asBool(row.is_sample) })),
       instructors: instructors.map((row) => ({ ...row, id: asNum(row.id), is_sample: asBool(row.is_sample) })),
@@ -506,22 +528,51 @@ export const updateSettings = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+function dateOrNull(value: unknown, label: string): string | null {
+  const raw = text(value, 10);
+  if (!raw) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) throw new Error(`${label} needs a real date`);
+  return raw;
+}
+
+function weekdayOfISO(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
 export const upsertClass = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => {
     const raw = obj(input);
-    const weekday = asNum(raw.weekday);
-    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw new Error("Pick a day");
     const id = raw.id == null || raw.id === "" ? null : asNum(raw.id);
+    const one_off_date = dateOrNull(raw.one_off_date, "The class date");
+    let weekday = asNum(raw.weekday);
+    if (one_off_date) weekday = weekdayOfISO(one_off_date);
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw new Error("Pick a day");
+    const starts_on = one_off_date ? null : dateOrNull(raw.starts_on, "Starts");
+    const ends_on = one_off_date ? null : dateOrNull(raw.ends_on, "Ends");
+    if (starts_on && ends_on && ends_on < starts_on) throw new Error("Ends needs to be after Starts");
+    const start_time = required(raw.start_time, "Start", 8);
+    const end_time = required(raw.end_time, "End", 8);
+    if (end_time <= start_time) throw new Error("End needs to be after Start");
+    const instructor = text(raw.instructor, 200)
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(", ");
+    if (!instructor) throw new Error("Pick at least one instructor");
     return {
       id,
       weekday,
-      start_time: required(raw.start_time, "Start", 8),
-      end_time: required(raw.end_time, "End", 8),
+      one_off_date,
+      starts_on,
+      ends_on,
+      start_time,
+      end_time,
       title: required(raw.title, "Class name", 80),
-      room: required(raw.room, "Room", 80),
-      instructor: required(raw.instructor, "Instructor", 80),
-      ages: required(raw.ages, "Who it is for", 80),
+      room: text(raw.room, 80) || "Main floor",
+      instructor,
+      ages: text(raw.ages, 80),
       focus: text(raw.focus, 160),
     };
   })
@@ -532,6 +583,9 @@ export const upsertClass = createServerFn({ method: "POST" })
       await sql`
         update class_sessions set
           weekday = ${data.weekday},
+          one_off_date = ${data.one_off_date},
+          starts_on = ${data.starts_on},
+          ends_on = ${data.ends_on},
           start_time = ${data.start_time},
           end_time = ${data.end_time},
           title = ${data.title},
@@ -544,9 +598,37 @@ export const upsertClass = createServerFn({ method: "POST" })
       `;
     } else {
       await sql`
-        insert into class_sessions (weekday, start_time, end_time, title, room, instructor, ages, focus, is_sample)
-        values (${data.weekday}, ${data.start_time}, ${data.end_time}, ${data.title}, ${data.room}, ${data.instructor}, ${data.ages}, ${data.focus}, false)
+        insert into class_sessions
+          (weekday, one_off_date, starts_on, ends_on, start_time, end_time, title, room, instructor, ages, focus, is_sample)
+        values
+          (${data.weekday}, ${data.one_off_date}, ${data.starts_on}, ${data.ends_on}, ${data.start_time}, ${data.end_time},
+           ${data.title}, ${data.room}, ${data.instructor}, ${data.ages}, ${data.focus}, false)
       `;
+    }
+    return { ok: true };
+  });
+
+/** Skip (or bring back) one date of a weekly class, e.g. a holiday or tournament day. */
+export const setClassSkip = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) => {
+    const raw = obj(input);
+    const class_id = asNum(raw.class_id);
+    if (!Number.isInteger(class_id) || class_id <= 0) throw new Error("Pick a class");
+    const day = dateOrNull(raw.day, "Date");
+    if (!day) throw new Error("Pick a date");
+    return { class_id, day, skip: raw.skip === true || raw.skip === "true" };
+  })
+  .handler(async ({ context, data }) => {
+    await requireStaff(context.userId);
+    const sql = await getSql();
+    if (data.skip) {
+      await sql`
+        insert into class_skips (class_id, day) values (${data.class_id}, ${data.day})
+        on conflict (class_id, day) do nothing
+      `;
+    } else {
+      await sql`delete from class_skips where class_id = ${data.class_id} and day = ${data.day}`;
     }
     return { ok: true };
   });

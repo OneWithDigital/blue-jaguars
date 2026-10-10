@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Clapperboard, ExternalLink, Pencil, Play, Plus, Trash2, X } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
@@ -12,6 +12,7 @@ import {
   deleteGalleryItem,
   getGallery,
   getGalleryFile,
+  syncYouTubeNow,
   updateGalleryItem,
   upsertGalleryAlbum,
   type GalleryAlbum,
@@ -196,7 +197,9 @@ export function Gallery({ staff, athletes }: { staff: boolean; athletes: string[
       </div>
       <p className="mb-4 max-w-2xl text-sm text-mute">
         Anyone on the team can file photos. Full-length fights are too big to store here — paste the YouTube, Facebook, or file link. Short clips under 1.5 MB can be uploaded.
+        {" "}New public videos on the club YouTube channel are added to the YouTube channel album on their own.
       </p>
+      {staff ? <YouTubeCheck /> : null}
       <div className="mb-4 flex flex-wrap gap-2">
         <Chip on={albumId === "all"} onClick={() => setAlbumId("all")}>
           All
@@ -1144,5 +1147,38 @@ function EditSheet({
         </button>
       </form>
     </SheetFrame>
+  );
+}
+
+function YouTubeCheck() {
+  const queryClient = useQueryClient();
+  const check = useMutation({
+    mutationFn: () => syncYouTubeNow(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["gallery"] });
+    },
+  });
+  const result = check.data;
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        disabled={check.isPending}
+        onClick={() => check.mutate()}
+        className="min-h-11 rounded-full border border-line px-4 text-sm text-mute disabled:opacity-60"
+      >
+        {check.isPending ? "Checking YouTube…" : "Check YouTube now"}
+      </button>
+      {check.isError ? <span className="text-sm text-gold">{errText(check.error)}</span> : null}
+      {result ? (
+        <span className="text-sm text-mute">
+          {result.status === "none"
+            ? "The channel has no public videos yet. Unlisted and private videos are not picked up."
+            : result.added
+              ? `Added ${result.added} new ${result.added === 1 ? "video" : "videos"}.`
+              : "Up to date. No new videos."}
+        </span>
+      ) : null}
+    </div>
   );
 }

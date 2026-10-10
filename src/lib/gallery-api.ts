@@ -158,10 +158,119 @@ async function assertAlbum(id: number): Promise<void> {
   if (!rows[0]) throw new Error("Pick an album");
 }
 
+// ---------- YouTube channel import ----------
+// Public videos on the club channel are pulled from YouTube's RSS feed (no API
+// key) into a "YouTube channel" album. Checked at most every 30 minutes when
+// someone opens Film; admins can force a check. Unlisted and private videos are
+// not in the feed.
+const YOUTUBE_REFRESH_MS = 30 * 60 * 1000;
+
+type FeedVideo = { id: string; title: string; description: string; published: string };
+
+function decodeXml(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
+    .replace(/&amp;/g, "&")
+    .trim();
+}
+
+function tag(block: string, name: string): string {
+  const match = block.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`));
+  return match ? decodeXml(match[1]) : "";
+}
+
+async function fetchChannelFeed(channelId: string): Promise<FeedVideo[] | "none"> {
+  const res = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`, {
+    signal: AbortSignal.timeout(6000),
+    headers: { accept: "application/atom+xml, application/xml" },
+  });
+  // YouTube answers 404 for a channel with no public videos yet.
+  if (res.status === 404) return "none";
+  if (!res.ok) throw new Error(`YouTube answered ${res.status}`);
+  const xml = await res.text();
+  const videos: FeedVideo[] = [];
+  for (const entry of xml.split("<entry>").slice(1)) {
+    const id = tag(entry, "yt:videoId");
+    if (!/^[A-Za-z0-9_-]{6,20}$/.test(id)) continue;
+    videos.push({
+      id,
+      title: tag(entry, "title").slice(0, 120) || "Club video",
+      description: tag(entry, "media:description").slice(0, 400),
+      published: tag(entry, "published"),
+    });
+  }
+  return videos;
+}
+
+async function youtubeAlbumId(): Promise<number> {
+  const sql = await getSql();
+  const found = await sql<{ id: number }>`select id from gallery_albums where source = 'youtube' order by id limit 1`;
+  if (found[0]) return asNum(found[0].id);
+  const made = await sql<{ id: number }>`
+    insert into gallery_albums (title, event_date, notes, is_sample, source)
+    values ('YouTube channel', null, 'New public videos from the club YouTube channel show up here on their own.', false, 'youtube')
+    returning id
+  `;
+  return asNum(made[0]?.id);
+}
+
+export async function syncYouTube(force = false): Promise<{ added: number; status: "ok" | "none" | "skipped" | "off" }> {
+  const sql = await getSql();
+  const rows = await sql<{ channel: string; synced: string | null }>`
+    select youtube_channel_id as channel, youtube_synced_at::text as synced from dojo_settings where id = 1
+  `;
+  const channel = (rows[0]?.channel ?? "").trim();
+  if (!channel) return { added: 0, status: "off" };
+  const last = rows[0]?.synced ? Date.parse(rows[0].synced) : 0;
+  if (!force && last && Date.now() - last < YOUTUBE_REFRESH_MS) return { added: 0, status: "skipped" };
+  // Stamp first so parallel page loads don't all call YouTube.
+  await sql`update dojo_settings set youtube_synced_at = now() where id = 1`;
+  const feed = await fetchChannelFeed(channel);
+  if (feed === "none") return { added: 0, status: "none" };
+  if (!feed.length) return { added: 0, status: "ok" };
+  const albumId = await youtubeAlbumId();
+  let added = 0;
+  for (const video of [...feed].reverse()) {
+    const published = Number.isNaN(Date.parse(video.published)) ? new Date().toISOString() : video.published;
+    const inserted = await sql<{ id: number }>`
+      insert into gallery_items
+        (album_id, kind, title, caption, poster, video_url, is_sample, added_by, youtube_id, created_at)
+      select ${albumId}, 'video', ${video.title}, ${video.description},
+             ${`https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`},
+             ${`https://www.youtube.com/watch?v=${video.id}`}, false, 'youtube', ${video.id}, ${published}
+      where not exists (select 1 from gallery_items where youtube_id = ${video.id})
+      returning id
+    `;
+    if (inserted[0]) added += 1;
+  }
+  return { added, status: "ok" };
+}
+
+export const syncYouTubeNow = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    await requireInstructor(context.userId);
+    try {
+      return await syncYouTube(true);
+    } catch (error) {
+      throw new Error(`Could not reach YouTube: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
+  });
+
 export const getGallery = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }): Promise<GalleryData> => {
     const role = await requireMember(context.userId);
+    try {
+      await syncYouTube(false);
+    } catch (error) {
+      console.error("[youtube] sync failed:", error instanceof Error ? error.message : error);
+    }
     const sql = await getSql();
     const albums = await sql<GalleryAlbum>`
       select id, title, coalesce(event_date::text, '') as event_date, notes, is_sample

@@ -39,8 +39,14 @@ import {
   WEEKDAYS,
   circuitDivisions,
   clock,
+  addDaysISO,
+  classesOn,
   countMedals,
   currentWeek,
+  isSkipped,
+  splitNames,
+  weekOf,
+  weeklyRunsOn,
   formatDay,
   isStaff,
   localDateISO,
@@ -64,6 +70,7 @@ import {
   postMessage,
   removeAccess,
   setAttendance,
+  setClassSkip,
   setDues,
   setKey,
   setMemberRole,
@@ -111,19 +118,15 @@ function minutes(value: string) {
   return (h || 0) * 60 + (m || 0);
 }
 
-function nextSession(classes: ClassSession[], now = new Date()) {
-  if (!classes.length) return null;
-  const dow = now.getDay();
+function nextSession(classes: ClassSession[], skips: PortalData["skips"], now = new Date()) {
+  const today = localDateISO(now);
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  const sorted = [...classes].sort(
-    (a, b) => a.weekday - b.weekday || a.start_time.localeCompare(b.start_time),
-  );
-  const hit = sorted.find(
-    (row) => row.weekday > dow || (row.weekday === dow && minutes(row.start_time) >= nowMin),
-  );
-  const session = hit ?? sorted[0];
-  const wrapped = !hit;
-  return { session, wrapped };
+  for (let ahead = 0; ahead <= 60; ahead += 1) {
+    const day = addDaysISO(today, ahead);
+    const rows = classesOn(classes, skips, day).filter((row) => ahead > 0 || minutes(row.start_time) >= nowMin);
+    if (rows.length) return { session: rows[0], day, ahead };
+  }
+  return null;
 }
 
 function standingGroups(results: MskcResult[]) {
@@ -469,7 +472,7 @@ function MottoPoster() {
 }
 
 function Home({ data }: { data: PortalData }) {
-  const upcoming = nextSession(data.classes);
+  const upcoming = nextSession(data.classes, data.skips);
   const today = localDateISO();
   const nextEvent = data.tournaments.find((event) => event.event_date >= today) ?? null;
   const cleaning = currentWeek(data.cleaning, today);
@@ -523,7 +526,7 @@ function Home({ data }: { data: PortalData }) {
           title={upcoming ? upcoming.session.title : "No classes yet"}
           body={
             upcoming
-              ? `${upcoming.wrapped ? "Next week · " : ""}${WEEKDAYS[upcoming.session.weekday]} ${clock(upcoming.session.start_time)} · ${upcoming.session.instructor}`
+              ? `${upcoming.ahead === 0 ? "Today" : upcoming.ahead === 1 ? "Tomorrow" : formatDay(upcoming.day)} ${clock(upcoming.session.start_time)} · ${upcoming.session.instructor}`
               : "Instructors can add the weekly schedule."
           }
           href="calendar"
@@ -584,56 +587,151 @@ function Tile({ kicker, title, body, href }: { kicker: string; title: string; bo
 
 function Classes({ data, embedded = false }: { data: PortalData; embedded?: boolean }) {
   const staff = isStaff(data.role);
-  const [day, setDay] = useState(() => {
-    const today = new Date().getDay();
-    return data.classes.some((row) => row.weekday === today) ? today : 1;
-  });
-  const rows = data.classes.filter((row) => row.weekday === day);
-  const action = staff ? <ClassEditor /> : null;
+  const today = localDateISO();
+  const [offset, setOffset] = useState(0);
+  const dates = weekOf(today, offset);
+  const skip = useSave<{ class_id: number; day: string; skip: boolean }>((input) => setClassSkip({ data: input }));
+  const action = staff ? <ClassEditor instructors={data.instructors} /> : null;
+  const label =
+    offset === 0 ? "This week" : offset === 1 ? "Next week" : offset === -1 ? "Last week" : `Week of ${formatDay(dates[0])}`;
   return (
     <div>
       {embedded ? <BlockHead title="Classes" action={action} /> : <PageHead kicker="Weekly floor" title="Classes" action={action} />}
-      <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-        {WEEKDAYS.map((label, index) => (
-          <button
-            key={label}
-            type="button"
-            onClick={() => setDay(index)}
-            className={
-              "min-h-11 shrink-0 rounded-full px-4 py-2 text-sm " +
-              (day === index ? "bg-blue text-ink" : "border border-line text-mute")
-            }
-          >
-            {label}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={offset <= -4}
+          onClick={() => setOffset(offset - 1)}
+          className="min-h-11 rounded-full border border-line px-4 text-sm text-mute disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <p className="min-w-40 text-center text-sm">
+          <span className="text-paper">{label}</span>
+          <span className="block text-xs text-mute">
+            {formatDay(dates[0])} to {formatDay(dates[6])}
+          </span>
+        </p>
+        <button
+          type="button"
+          disabled={offset >= 52}
+          onClick={() => setOffset(offset + 1)}
+          className="min-h-11 rounded-full border border-line px-4 text-sm text-mute disabled:opacity-40"
+        >
+          Next
+        </button>
+        {offset !== 0 ? (
+          <button type="button" onClick={() => setOffset(0)} className="min-h-11 px-2 text-sm text-gold">
+            Back to this week
           </button>
-        ))}
+        ) : null}
       </div>
-      {rows.length ? (
-        <ul className="space-y-3">
-          {rows.map((row) => (
-            <li key={row.id} className="rounded-2xl border border-line bg-panel px-4 py-4 sm:flex sm:items-center sm:justify-between">
-              <div>
-                <p className="font-display text-4xl tabular-nums leading-none">{clock(row.start_time)}</p>
-                <p className="mt-1 text-sm text-mute">until {clock(row.end_time)} · {row.room}</p>
-              </div>
-              <div className="mt-3 sm:mt-0 sm:text-right">
-                <p className="text-lg">{row.title}</p>
-                <p className="text-sm text-mute">{row.ages} · {row.instructor}</p>
-                {row.focus ? <p className="text-sm text-paper/80">{row.focus}</p> : null}
-              </div>
-              {staff ? (
-                <div className="mt-3 sm:ml-4 sm:mt-0">
-                  <ClassEditor existing={row} />
-                  <Remove id={row.id} label="Remove class" run={(id) => deleteClass({ data: { id } })} />
-                </div>
-              ) : null}
+      <ul className="space-y-3">
+        {dates.map((day) => {
+          const rows = classesOn(data.classes, data.skips, day);
+          const skipped = staff ? data.classes.filter((row) => weeklyRunsOn(row, day) && isSkipped(data.skips, row.id, day)) : [];
+          if (!rows.length && !skipped.length) return null;
+          return (
+            <li key={day} className={"rounded-2xl border bg-panel px-4 py-4 " + (day === today ? "border-gold" : "border-line")}>
+              <p className="text-xs tracking-[0.16em] text-gold uppercase">
+                {day === today ? "Today · " : ""}
+                {formatDay(day)}
+              </p>
+              <ul className="mt-2 divide-y divide-line">
+                {rows.map((row) => (
+                  <li key={row.id} className="py-3 sm:flex sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-display text-3xl tabular-nums leading-none">{clock(row.start_time)}</p>
+                      <p className="mt-1 text-sm text-mute">
+                        until {clock(row.end_time)} · {row.room}
+                      </p>
+                    </div>
+                    <div className="mt-2 sm:mt-0 sm:text-right">
+                      <p className="text-lg">
+                        {row.title}
+                        {row.one_off_date ? <span className="ml-2 text-xs tracking-[0.14em] text-gold uppercase">One time</span> : null}
+                      </p>
+                      <p className="text-sm text-mute">{[row.ages, row.instructor].filter(Boolean).join(" · ")}</p>
+                      {row.focus ? <p className="text-sm text-paper/80">{row.focus}</p> : null}
+                    </div>
+                    {staff ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 sm:ml-4 sm:mt-0">
+                        <ClassEditor existing={row} instructors={data.instructors} />
+                        {row.one_off_date ? (
+                          <Remove id={row.id} label="Remove class" run={(id) => deleteClass({ data: { id } })} />
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={skip.isPending}
+                            onClick={() => skip.mutate({ class_id: row.id, day, skip: true })}
+                            className="min-h-11 rounded-full border border-line px-3 text-sm text-mute"
+                          >
+                            Skip this date
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+                {skipped.map((row) => (
+                  <li key={`skip-${row.id}`} className="flex items-center justify-between gap-3 py-3 text-sm text-mute">
+                    <span>
+                      <s>{clock(row.start_time)} {row.title}</s> · skipped this date
+                    </span>
+                    <button
+                      type="button"
+                      disabled={skip.isPending}
+                      onClick={() => skip.mutate({ class_id: row.id, day, skip: false })}
+                      className="min-h-11 rounded-full border border-line px-3 text-sm text-mute"
+                    >
+                      Bring back
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-mute">Nothing on the floor {WEEKDAYS[day]}.</p>
-      )}
+          );
+        })}
+      </ul>
+      {dates.every((day) => !classesOn(data.classes, data.skips, day).length) ? (
+        <p className="text-mute">Nothing on the floor this week.</p>
+      ) : null}
+      {skip.isError ? <p className="mt-3 text-sm text-gold">{errText(skip.error)}</p> : null}
+      {staff && data.classes.some((row) => !row.one_off_date) ? (
+        <WeeklyList data={data} />
+      ) : null}
     </div>
+  );
+}
+
+/** Staff view of the repeating schedule itself, so a weekly class can be edited or removed for good. */
+function WeeklyList({ data }: { data: PortalData }) {
+  const weekly = data.classes
+    .filter((row) => !row.one_off_date)
+    .sort((a, b) => a.weekday - b.weekday || a.start_time.localeCompare(b.start_time));
+  return (
+    <details className="mt-6 rounded-2xl border border-line bg-panel px-4 py-3">
+      <summary className="min-h-11 cursor-pointer py-2 text-sm text-mute">Repeating schedule ({weekly.length})</summary>
+      <ul className="divide-y divide-line">
+        {weekly.map((row) => (
+          <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div className="text-sm">
+              <p className="text-paper">
+                Every {WEEKDAYS[row.weekday]} · {clock(row.start_time)} · {row.title}
+              </p>
+              <p className="text-mute">
+                {row.starts_on ? `From ${formatDay(row.starts_on)}` : "Running now"}
+                {row.ends_on ? ` until ${formatDay(row.ends_on)}` : ", no end date"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <ClassEditor existing={row} instructors={data.instructors} />
+              <Remove id={row.id} label="Remove class" run={(id) => deleteClass({ data: { id } })} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -1200,7 +1298,7 @@ function planned(data: PortalData, studentId: number, weekday: number, day: stri
 function Attendance({ data, embedded = false }: { data: PortalData; embedded?: boolean }) {
   const dates = weekDates();
   const staff = isStaff(data.role);
-  const days = [...new Set(data.classes.map((row) => row.weekday))].sort((a, b) => a - b);
+  const days = dates.map((day, weekday) => ({ day, weekday })).filter(({ day }) => classesOn(data.classes, data.skips, day).length).map(({ weekday }) => weekday);
   const editable = (parentEmail: string) => staff || ownsAthlete(data.viewer_email, parentEmail);
   const save = useSave<{ student_id: number; day: string; going: boolean }>((input) => setAttendance({ data: input }));
   const repeat = useSave(() =>
@@ -1251,7 +1349,7 @@ function Attendance({ data, embedded = false }: { data: PortalData; embedded?: b
         <div className="space-y-4">
           {days.map((weekday) => {
             const day = dates[weekday];
-            const titles = data.classes.filter((row) => row.weekday === weekday).map((row) => row.title);
+            const titles = classesOn(data.classes, data.skips, day).map((row) => row.title);
             const coming = data.students.filter((student) => planned(data, student.id, weekday, day)).length;
             return (
               <section key={weekday} className="rounded-2xl border border-line bg-panel px-4 py-4">
@@ -1725,28 +1823,40 @@ function Remove({ id, label, run }: { id: number; label: string; run: (id: numbe
   );
 }
 
-function ClassEditor({ existing }: { existing?: ClassSession }) {
+function ClassEditor({ existing, instructors }: { existing?: ClassSession; instructors: Instructor[] }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
+  const roster = instructors.map((person) => person.name).filter(Boolean);
+  const blank = () => ({
+    repeats: existing?.one_off_date ? "once" : "weekly",
     weekday: String(existing?.weekday ?? 1),
+    one_off_date: existing?.one_off_date ?? localDateISO(),
+    starts_on: existing?.starts_on ?? (existing ? "" : localDateISO()),
+    ends_on: existing?.ends_on ?? "",
     start_time: existing?.start_time ?? "17:30",
-    end_time: existing?.end_time ?? "18:20",
+    end_time: existing?.end_time ?? "18:30",
     title: existing?.title ?? "",
     room: existing?.room ?? "Main floor",
-    instructor: existing?.instructor ?? "",
+    picked: existing ? splitNames(existing.instructor).filter((name) => roster.includes(name)) : roster.slice(0, 1),
+    other: existing ? splitNames(existing.instructor).filter((name) => !roster.includes(name)).join(", ") : "",
     ages: existing?.ages ?? "",
     focus: existing?.focus ?? "",
   });
+  const [form, setForm] = useState(blank);
+  const toggle = (name: string) =>
+    setForm({ ...form, picked: form.picked.includes(name) ? form.picked.filter((n) => n !== name) : [...form.picked, name] });
   const save = useSave(() =>
     upsertClass({
       data: {
         id: existing?.id ?? null,
         weekday: Number(form.weekday),
+        one_off_date: form.repeats === "once" ? form.one_off_date : "",
+        starts_on: form.repeats === "weekly" ? form.starts_on : "",
+        ends_on: form.repeats === "weekly" ? form.ends_on : "",
         start_time: form.start_time,
         end_time: form.end_time,
         title: form.title,
         room: form.room,
-        instructor: form.instructor,
+        instructor: [...form.picked, ...splitNames(form.other)].join(", "),
         ages: form.ages,
         focus: form.focus,
       },
@@ -1755,11 +1865,29 @@ function ClassEditor({ existing }: { existing?: ClassSession }) {
   return (
     <>
       {existing ? (
-        <EditButton label="Edit" onClick={() => setOpen(true)} />
+        <EditButton
+          label="Edit"
+          onClick={() => {
+            setForm(blank());
+            setOpen(true);
+          }}
+        />
       ) : (
-        <AddButton label="Add class" onClick={() => setOpen(true)} />
+        <AddButton
+          label="Add class"
+          onClick={() => {
+            setForm(blank());
+            save.reset();
+            setOpen(true);
+          }}
+        />
       )}
-      <Sheet open={open} onOpenChange={setOpen} title={existing ? "Edit class" : "Add class"} description="Day, time, and who it’s for.">
+      <Sheet
+        open={open}
+        onOpenChange={setOpen}
+        title={existing ? "Edit class" : "Add class"}
+        description="A weekly class repeats on its day until its end date. A one time class sits on one date."
+      >
         <form
           className="grid gap-3"
           onSubmit={(event: FormEvent) => {
@@ -1767,27 +1895,75 @@ function ClassEditor({ existing }: { existing?: ClassSession }) {
             save.mutate(undefined, { onSuccess: () => setOpen(false) });
           }}
         >
-          <label className="block">
-            <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Day</span>
-            <select
-              value={form.weekday}
-              onChange={(event) => setForm({ ...form, weekday: event.target.value })}
-              className={field}
-            >
-              {WEEKDAYS.map((label, index) => (
-                <option key={label} value={String(index)}>
-                  {label}
-                </option>
+          <div>
+            <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Repeats</span>
+            <div className="flex gap-2">
+              {[
+                ["weekly", "Every week"],
+                ["once", "One time"],
+              ].map(([value, text]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={form.repeats === value}
+                  onClick={() => setForm({ ...form, repeats: value })}
+                  className={"min-h-11 rounded-full px-4 text-sm " + (form.repeats === value ? "bg-blue text-ink" : "border border-line text-mute")}
+                >
+                  {text}
+                </button>
               ))}
-            </select>
-          </label>
-          <Field label="Start" type="time" value={form.start_time} onChange={(start_time) => setForm({ ...form, start_time })} />
-          <Field label="End" type="time" value={form.end_time} onChange={(end_time) => setForm({ ...form, end_time })} />
+            </div>
+          </div>
+          {form.repeats === "weekly" ? (
+            <>
+              <label className="block">
+                <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Day</span>
+                <select value={form.weekday} onChange={(event) => setForm({ ...form, weekday: event.target.value })} className={field}>
+                  {WEEKDAYS.map((label, index) => (
+                    <option key={label} value={String(index)}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Starts" type="date" value={form.starts_on} onChange={(starts_on) => setForm({ ...form, starts_on })} />
+                <Field label="Ends (optional)" type="date" value={form.ends_on} onChange={(ends_on) => setForm({ ...form, ends_on })} />
+              </div>
+              <p className="-mt-1 text-xs text-mute">Leave Ends blank to keep it running all year. Skip single dates from the calendar.</p>
+            </>
+          ) : (
+            <Field label="Date" type="date" value={form.one_off_date} onChange={(one_off_date) => setForm({ ...form, one_off_date })} />
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Start" type="time" value={form.start_time} onChange={(start_time) => setForm({ ...form, start_time })} />
+            <Field label="End" type="time" value={form.end_time} onChange={(end_time) => setForm({ ...form, end_time })} />
+          </div>
           <Field label="Class" value={form.title} onChange={(title) => setForm({ ...form, title })} />
           <Field label="Room" value={form.room} onChange={(room) => setForm({ ...form, room })} />
-          <Field label="Instructor" value={form.instructor} onChange={(instructor) => setForm({ ...form, instructor })} />
-          <Field label="Who" value={form.ages} onChange={(ages) => setForm({ ...form, ages })} />
-          <Field label="Focus" value={form.focus} onChange={(focus) => setForm({ ...form, focus })} />
+          <div>
+            <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Instructors</span>
+            {roster.length ? (
+              <div className="flex flex-wrap gap-2">
+                {roster.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    aria-pressed={form.picked.includes(name)}
+                    onClick={() => toggle(name)}
+                    className={"min-h-11 rounded-full px-4 text-sm " + (form.picked.includes(name) ? "bg-blue text-ink" : "border border-line text-mute")}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-mute">No instructors listed yet. Add them on the Instructors page, or type names below.</p>
+            )}
+          </div>
+          <Field label="Other instructors (optional)" value={form.other} onChange={(other) => setForm({ ...form, other })} />
+          <Field label="Who it is for (optional)" value={form.ages} onChange={(ages) => setForm({ ...form, ages })} />
+          <Field label="Focus (optional)" value={form.focus} onChange={(focus) => setForm({ ...form, focus })} />
           <SaveButton pending={save.isPending} error={save.isError ? errText(save.error) : ""} />
         </form>
       </Sheet>
