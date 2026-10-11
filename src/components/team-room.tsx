@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
+  Camera,
   CalendarDays,
   Clapperboard,
   ExternalLink,
@@ -16,13 +17,15 @@ import {
   Plus,
   Settings,
   ShoppingBag,
+  Swords,
   Trash2,
+  UserPlus,
   Trophy,
   Users,
   Wifi,
   X,
 } from "lucide-react";
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Navigate } from "@tanstack/react-router";
 import { UserButton, RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -74,6 +77,7 @@ import {
   setDues,
   setKey,
   setMemberRole,
+  setStudentPhoto,
   saveUsualWeek,
   toggleCleaning,
   updateSettings,
@@ -96,6 +100,7 @@ import {
 } from "@/lib/dojo-api";
 import { Boot, errText } from "@/components/boot";
 import { Gallery, LatestFilm } from "@/components/gallery";
+import { FeedbackButton, FeedbackInbox, FeedbackSheet, TourButton, WelcomeTour } from "@/components/welcome";
 
 const NAV: { id: Section; label: string; icon: typeof LayoutGrid; staff?: boolean }[] = [
   { id: "home", label: "Floor", icon: LayoutGrid },
@@ -188,6 +193,18 @@ export function TeamRoom({ section }: { section: Section }) {
     enabled: Boolean(user),
   });
   const [open, setOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const tourShown = useRef(false);
+  const tourDone = query.data?.tour_done;
+
+  useEffect(() => {
+    // First visit after joining: walk the family through the room once.
+    if (tourDone === false && !tourShown.current) {
+      tourShown.current = true;
+      setTourOpen(true);
+    }
+  }, [tourDone]);
 
   if (isPending || (user && query.isLoading)) return <Boot label="Opening the team room" />;
   if (!user) return <RedirectToSignIn />;
@@ -229,7 +246,9 @@ export function TeamRoom({ section }: { section: Section }) {
           <p className="hidden text-sm text-mute lg:block">
             {data.settings.city} · {roleLabel(data.role)}
           </p>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <TourButton onClick={() => setTourOpen(true)} />
+            <FeedbackButton onClick={() => setFeedbackOpen(true)} />
             <UserButton />
           </div>
         </header>
@@ -265,6 +284,8 @@ export function TeamRoom({ section }: { section: Section }) {
           {section === "desk" ? <Desk data={data} /> : null}
         </main>
       </div>
+      <WelcomeTour open={tourOpen} onOpenChange={setTourOpen} onFeedback={() => setFeedbackOpen(true)} />
+      <FeedbackSheet open={feedbackOpen} onOpenChange={setFeedbackOpen} page={section} />
     </div>
   );
 }
@@ -492,6 +513,19 @@ function Home({ data }: { data: PortalData }) {
         <p className="mt-2 max-w-3xl font-display text-4xl leading-none tracking-wide sm:text-5xl">{data.settings.motto}</p>
       ) : null}
       <p className="mt-3 max-w-2xl text-mute">{data.settings.about}</p>
+      {!isStaff(data.role) && !data.students.some((student) => ownsAthlete(data.viewer_email, student.parent_email)) ? (
+        <Link
+          to="/app"
+          search={{ section: "roster" }}
+          className="mt-5 flex items-center gap-3 rounded-2xl border border-blue/50 bg-blue/10 px-4 py-4"
+        >
+          <UserPlus className="size-6 shrink-0 text-blue" />
+          <span>
+            <span className="block font-semibold">Add your athlete</span>
+            <span className="block text-sm text-mute">Put your kid on the roster with a photo, belt, and events.</span>
+          </span>
+        </Link>
+      ) : null}
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <section className="min-w-[16rem] max-w-md flex-1 rounded-2xl border border-line bg-panel px-4 py-4">
           <p className="flex items-center gap-2 text-xs tracking-[0.16em] text-gold uppercase">
@@ -997,20 +1031,40 @@ function Instructors({ data }: { data: PortalData }) {
   );
 }
 
+function canEditAthlete(data: PortalData, student: Student) {
+  return isStaff(data.role) || ownsAthlete(data.viewer_email, student.parent_email);
+}
+
 function Roster({ data }: { data: PortalData }) {
   const staff = isStaff(data.role);
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
-  const rows = data.students.filter((student) => {
-    if (!needle) return true;
-    return [student.student_name, student.parent_name, student.parent_email, student.parent_phone, student.belt, student.events]
-      .join(" ")
-      .toLowerCase()
-      .includes(needle);
-  });
+  const mine = data.students.filter((student) => ownsAthlete(data.viewer_email, student.parent_email));
+  const rows = data.students
+    .filter((student) => {
+      if (!needle) return true;
+      return [student.student_name, student.parent_name, student.parent_email, student.parent_phone, student.belt, student.events, student.weapon]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle);
+    })
+    // A family's own athletes first.
+    .sort((a, b) => Number(ownsAthlete(data.viewer_email, b.parent_email)) - Number(ownsAthlete(data.viewer_email, a.parent_email)));
   return (
     <div>
-      <PageHead kicker="Athletes and parents" title="Roster" action={staff ? <StudentEditor /> : null} />
+      <PageHead
+        kicker="Athletes and parents"
+        title="Roster"
+        action={<StudentEditor staff={staff} />}
+      />
+      {!staff && !mine.length ? (
+        <div className="mb-4 rounded-2xl border border-blue/50 bg-blue/10 px-4 py-4">
+          <p className="font-semibold">Add your athlete to get started</p>
+          <p className="mt-1 text-sm text-mute">
+            Tap Add my athlete. Their card is linked to your sign-in, so you can update it and check them in for class.
+          </p>
+        </div>
+      ) : null}
       <p className="mb-3 max-w-2xl text-sm text-mute">
         Each athlete can carry a circuit card: girl or boy, skill, and the events they enter. Division names follow the MSKC chart.
       </p>
@@ -1034,50 +1088,128 @@ function Roster({ data }: { data: PortalData }) {
         <input
           value={q}
           onChange={(event) => setQ(event.target.value)}
-          placeholder="Search a name, belt, or phone"
+          placeholder="Search a name, belt, weapon, or phone"
           className={field}
         />
       </label>
       {rows.length ? (
         <ul className="space-y-3">
-          {rows.map((student) => (
-            <li key={student.id} className="rounded-2xl border border-line bg-panel px-4 py-4 sm:grid sm:grid-cols-[1fr_1fr_auto] sm:gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-xl">{student.student_name}</h2>
-                  <span className={"rounded-full px-2 py-0.5 text-xs font-semibold " + (BELT_CHIP[student.belt] ?? "bg-panel-2 text-paper")}>
-                    {student.belt}
-                  </span>
-                  {student.age ? <span className="text-sm text-mute">Age {student.age}</span> : null}
+          {rows.map((student) => {
+            const editable = canEditAthlete(data, student);
+            const results = data.results.filter((row) => row.student_name === student.student_name);
+            return (
+              <li key={student.id} className="rounded-2xl border border-line bg-panel px-4 py-4 sm:grid sm:grid-cols-[1fr_1fr_auto] sm:gap-4">
+                <div className="flex gap-4">
+                  <AthletePhoto student={student} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-xl">{student.student_name}</h2>
+                      <span className={"rounded-full px-2 py-0.5 text-xs font-semibold " + (BELT_CHIP[student.belt] ?? "bg-panel-2 text-paper")}>
+                        {student.belt}
+                      </span>
+                      {student.age ? <span className="text-sm text-mute">Age {student.age}</span> : null}
+                    </div>
+                    <AthleteStats student={student} results={results} />
+                    {student.notes ? <p className="mt-1 text-sm text-mute">{student.notes}</p> : null}
+                    <CircuitLines student={student} />
+                    <MedalShelf results={results} />
+                  </div>
                 </div>
-                {student.notes ? <p className="mt-1 text-sm text-mute">{student.notes}</p> : null}
-                <CircuitLines student={student} />
-                <MedalShelf results={data.results.filter((row) => row.student_name === student.student_name)} />
-              </div>
-              <div className="mt-3 text-sm sm:mt-0">
-                <p>{student.parent_name}</p>
-                {student.parent_phone ? (
-                  <a className="mt-1 flex items-center gap-2 text-paper" href={`tel:${student.parent_phone}`}>
-                    <Phone className="size-4 text-gold" /> {student.parent_phone}
-                  </a>
-                ) : null}
-                {student.parent_email ? (
-                  <a className="mt-1 block break-all text-mute" href={`mailto:${student.parent_email}`}>{student.parent_email}</a>
-                ) : null}
-              </div>
-              {staff ? (
-                <div className="mt-3 flex gap-2 sm:mt-0 sm:flex-col">
-                  <StudentEditor existing={student} />
-                  <Remove id={student.id} label="Remove athlete" run={(id) => deleteStudent({ data: { id } })} />
+                <div className="mt-3 text-sm sm:mt-0">
+                  <p>{student.parent_name}</p>
+                  {student.parent_phone ? (
+                    <a className="mt-1 flex items-center gap-2 text-paper" href={`tel:${student.parent_phone}`}>
+                      <Phone className="size-4 text-gold" /> {student.parent_phone}
+                    </a>
+                  ) : null}
+                  {student.parent_email ? (
+                    <a className="mt-1 block break-all text-mute" href={`mailto:${student.parent_email}`}>{student.parent_email}</a>
+                  ) : null}
                 </div>
-              ) : null}
-            </li>
-          ))}
+                {editable ? (
+                  <div className="mt-3 flex gap-2 sm:mt-0 sm:flex-col">
+                    <StudentEditor existing={student} staff={staff} />
+                    {staff ? <Remove id={student.id} label="Remove athlete" run={(id) => deleteStudent({ data: { id } })} /> : null}
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p className="text-mute">{data.students.length ? "No one matches that search." : "The roster is empty."}</p>
       )}
     </div>
+  );
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function AthletePhoto({ student, size = "size-20" }: { student: Student; size?: string }) {
+  const [broken, setBroken] = useState(false);
+  if (student.photo_version && !broken) {
+    return (
+      <img
+        src={`/api/student-photo/${student.id}?v=${student.photo_version}`}
+        alt={student.student_name}
+        loading="lazy"
+        onError={() => setBroken(true)}
+        className={size + " shrink-0 rounded-2xl border border-line object-cover"}
+      />
+    );
+  }
+  return (
+    <span className={size + " grid shrink-0 place-items-center rounded-2xl border border-line bg-panel-2 font-display text-3xl text-mute"}>
+      {initials(student.student_name) || "?"}
+    </span>
+  );
+}
+
+function AthleteStats({ student, results }: { student: Student; results: MskcResult[] }) {
+  const circuit = countMedals(results.map((row) => row.place));
+  const gold = circuit.gold + student.other_gold;
+  const silver = circuit.silver + student.other_silver;
+  const bronze = circuit.bronze + student.other_bronze;
+  const medals = gold + silver + bronze;
+  const fights = student.wins + student.losses;
+  if (!student.weapon && !fights && !medals) return null;
+  return (
+    <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+      {student.weapon ? (
+        <div className="flex items-center gap-1.5">
+          <dt className="sr-only">Weapon</dt>
+          <Swords className="size-4 text-gold" />
+          <dd>{student.weapon}</dd>
+        </div>
+      ) : null}
+      {fights ? (
+        <div className="flex items-center gap-1.5">
+          <dt className="text-mute">Record</dt>
+          <dd>
+            {student.wins} W · {student.losses} L
+          </dd>
+        </div>
+      ) : null}
+      {medals ? (
+        <div className="flex items-center gap-1.5">
+          <dt className="text-mute">Medals</dt>
+          <dd>
+            {medals}
+            <span className="text-mute">
+              {" "}
+              ({[gold ? `${gold} gold` : "", silver ? `${silver} silver` : "", bronze ? `${bronze} bronze` : ""].filter(Boolean).join(", ")})
+            </span>
+          </dd>
+        </div>
+      ) : null}
+    </dl>
   );
 }
 
@@ -1457,6 +1589,7 @@ function Desk({ data }: { data: PortalData }) {
       <PageHead kicker={owner ? "Owner" : "Admin"} title="Desk" />
       <WifiForm settings={data.settings} />
       <DuesLedger data={data} />
+      <FeedbackInbox rows={data.feedback} />
       <KeyRoster data={data} />
       {owner ? <SettingsForm settings={data.settings} /> : null}
       <section>
@@ -2072,9 +2205,56 @@ function InstructorEditor({ existing }: { existing?: Instructor }) {
   );
 }
 
-function StudentEditor({ existing }: { existing?: Student }) {
+/** Square, center-cropped JPEG small enough to store with the roster. */
+async function squarePhoto(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file).catch(() => {
+    throw new Error("Could not read that photo. Use a JPG or PNG.");
+  });
+  try {
+    const side = Math.min(bitmap.width, bitmap.height);
+    const sx = (bitmap.width - side) / 2;
+    const sy = (bitmap.height - side) / 2;
+    let size = 512;
+    let quality = 0.82;
+    for (;;) {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Could not read that photo");
+      ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, size, size);
+      const url = canvas.toDataURL("image/jpeg", quality);
+      if (url.length < 500_000 || size <= 256) return url;
+      size = Math.round(size * 0.8);
+      quality = Math.max(0.6, quality - 0.08);
+    }
+  } finally {
+    bitmap.close();
+  }
+}
+
+function NumberField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">{label}</span>
+      <input
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={value}
+        onChange={(event) => onChange(event.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+        className={field}
+      />
+    </label>
+  );
+}
+
+const WEAPONS = ["", "Bo staff", "Kama", "Sai", "Nunchaku", "Tonfa", "Sword", "Escrima sticks", "Other"] as const;
+
+function StudentEditor({ existing, staff }: { existing?: Student; staff: boolean }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
+  const queryClient = useQueryClient();
+  const { user } = useCurrentUserState();
+  const blank = () => ({
     student_name: existing?.student_name ?? "",
     belt: existing?.belt ?? "White",
     age: existing?.age ? String(existing.age) : "",
@@ -2083,13 +2263,34 @@ function StudentEditor({ existing }: { existing?: Student }) {
     style: existing?.style ?? "",
     events: existing?.events ?? "",
     weight_class: existing?.weight_class ?? "",
-    parent_name: existing?.parent_name ?? "",
+    parent_name: existing?.parent_name ?? (staff ? "" : (user?.displayName ?? "")),
     parent_email: existing?.parent_email ?? "",
     parent_phone: existing?.parent_phone ?? "",
     notes: existing?.notes ?? "",
     has_key: existing?.has_key ?? false,
+    weapon: existing?.weapon ?? "",
+    wins: existing ? String(existing.wins || "") : "",
+    losses: existing ? String(existing.losses || "") : "",
+    other_gold: existing ? String(existing.other_gold || "") : "",
+    other_silver: existing ? String(existing.other_silver || "") : "",
+    other_bronze: existing ? String(existing.other_bronze || "") : "",
   });
-  const save = useSave(() => upsertStudent({ data: { id: existing?.id ?? null, ...form } }));
+  const [form, setForm] = useState(blank);
+  // undefined = unchanged, "" = remove, data URL = new photo
+  const [photo, setPhoto] = useState<string | undefined>(undefined);
+  const [photoError, setPhotoError] = useState("");
+  const save = useMutation({
+    mutationFn: async () => {
+      const result = await upsertStudent({ data: { id: existing?.id ?? null, ...form } });
+      const id = existing?.id ?? result.id;
+      if (photo !== undefined && id) await setStudentPhoto({ data: { id, photo } });
+      return result;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["portal"] });
+      setOpen(false);
+    },
+  });
   const preview = circuitDivisions({
     belt: form.belt,
     age: form.age ? Number(form.age) : null,
@@ -2101,17 +2302,86 @@ function StudentEditor({ existing }: { existing?: Student }) {
   });
   const black = form.belt === "Black";
   const picked = parseEvents(form.events);
+  const weaponChoice = WEAPONS.includes(form.weapon as (typeof WEAPONS)[number]) ? form.weapon : "Other";
+  const shownPhoto =
+    photo !== undefined ? photo : existing?.photo_version ? `/api/student-photo/${existing.id}?v=${existing.photo_version}` : "";
   return (
     <>
-      {existing ? <EditButton label="Edit" onClick={() => setOpen(true)} /> : <AddButton label="Add athlete" onClick={() => setOpen(true)} />}
-      <Sheet open={open} onOpenChange={setOpen} title={existing ? "Edit athlete" : "Add athlete"} description="Kid, belt, and the events they enter.">
+      {existing ? (
+        <EditButton
+          label="Edit"
+          onClick={() => {
+            setForm(blank());
+            setPhoto(undefined);
+            setPhotoError("");
+            save.reset();
+            setOpen(true);
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setForm(blank());
+            setPhoto(undefined);
+            setPhotoError("");
+            save.reset();
+            setOpen(true);
+          }}
+          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-blue px-4 text-sm font-semibold text-ink"
+        >
+          <UserPlus className="size-4" /> {staff ? "Add athlete" : "Add my athlete"}
+        </button>
+      )}
+      <Sheet
+        open={open}
+        onOpenChange={setOpen}
+        title={existing ? "Edit athlete" : staff ? "Add athlete" : "Add my athlete"}
+        description={staff ? "Kid, belt, and the events they enter." : "Your athlete's card. Only you and the instructors can change it."}
+      >
         <form
           className="grid gap-3"
           onSubmit={(event: FormEvent) => {
             event.preventDefault();
-            save.mutate(undefined, { onSuccess: () => setOpen(false) });
+            save.mutate();
           }}
         >
+          <div className="flex items-center gap-4">
+            {shownPhoto ? (
+              <img src={shownPhoto} alt="" className="size-20 rounded-2xl border border-line object-cover" />
+            ) : (
+              <span className="grid size-20 place-items-center rounded-2xl border border-dashed border-line text-mute">
+                <Camera className="size-6" />
+              </span>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <label className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line px-4 text-sm">
+                {shownPhoto ? "Change photo" : "Add photo"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!file) return;
+                    setPhotoError("");
+                    try {
+                      setPhoto(await squarePhoto(file));
+                    } catch (error) {
+                      setPhotoError(errText(error));
+                    }
+                  }}
+                />
+              </label>
+              {shownPhoto ? (
+                <button type="button" className="min-h-11 px-2 text-sm text-mute" onClick={() => setPhoto("")}>
+                  Remove
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {photoError ? <p className="text-sm text-gold">{photoError}</p> : null}
           <Field label="Athlete" value={form.student_name} onChange={(student_name) => setForm({ ...form, student_name })} />
           <SelectField label="Belt" value={form.belt} onChange={(belt) => setForm({ ...form, belt })} options={BELTS} />
           <Field label="Age" value={form.age} onChange={(age) => setForm({ ...form, age })} />
@@ -2192,18 +2462,65 @@ function StudentEditor({ existing }: { existing?: Student }) {
               ))}
             </ul>
           ) : null}
-          <Field label="Parent" value={form.parent_name} onChange={(parent_name) => setForm({ ...form, parent_name })} />
-          <Field label="Parent email" value={form.parent_email} onChange={(parent_email) => setForm({ ...form, parent_email })} />
-          <Field label="Parent phone" value={form.parent_phone} onChange={(parent_phone) => setForm({ ...form, parent_phone })} />
-          <label className="flex min-h-11 items-center gap-3 text-sm">
-            <input
-              type="checkbox"
-              checked={form.has_key}
-              onChange={(event) => setForm({ ...form, has_key: event.target.checked })}
-              className="size-5 accent-blue"
-            />
-            This parent has a dojo key
+          <label className="block">
+            <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Weapon</span>
+            <select
+              value={form.weapon ? weaponChoice : ""}
+              onChange={(event) => setForm({ ...form, weapon: event.target.value === "Other" ? "Other" : event.target.value })}
+              className={field}
+            >
+              {WEAPONS.map((weapon) => (
+                <option key={weapon} value={weapon}>
+                  {weapon || "None"}
+                </option>
+              ))}
+            </select>
           </label>
+          {form.weapon && weaponChoice === "Other" ? (
+            <Field
+              label="Which weapon"
+              value={form.weapon === "Other" ? "" : form.weapon}
+              onChange={(weapon) => setForm({ ...form, weapon: weapon || "Other" })}
+            />
+          ) : null}
+          <fieldset className="rounded-xl border border-line px-3 pt-2 pb-3">
+            <legend className="px-1 text-xs tracking-[0.14em] text-mute uppercase">Fight record</legend>
+            <div className="grid grid-cols-2 gap-3">
+              <NumberField label="Wins" value={form.wins} onChange={(wins) => setForm({ ...form, wins })} />
+              <NumberField label="Losses" value={form.losses} onChange={(losses) => setForm({ ...form, losses })} />
+            </div>
+          </fieldset>
+          <fieldset className="rounded-xl border border-line px-3 pt-2 pb-3">
+            <legend className="px-1 text-xs tracking-[0.14em] text-mute uppercase">Medals outside MSKC</legend>
+            <p className="mb-2 text-xs text-mute">MSKC medals count on their own from the results instructors post.</p>
+            <div className="grid grid-cols-3 gap-3">
+              <NumberField label="Gold" value={form.other_gold} onChange={(other_gold) => setForm({ ...form, other_gold })} />
+              <NumberField label="Silver" value={form.other_silver} onChange={(other_silver) => setForm({ ...form, other_silver })} />
+              <NumberField label="Bronze" value={form.other_bronze} onChange={(other_bronze) => setForm({ ...form, other_bronze })} />
+            </div>
+          </fieldset>
+          <Field
+            label={staff ? "Parent" : "Parent name"}
+            value={form.parent_name}
+            onChange={(parent_name) => setForm({ ...form, parent_name })}
+          />
+          {staff ? (
+            <Field label="Parent email" value={form.parent_email} onChange={(parent_email) => setForm({ ...form, parent_email })} />
+          ) : (
+            <p className="text-sm text-mute">This card is linked to the email you signed in with.</p>
+          )}
+          <Field label="Parent phone" value={form.parent_phone} onChange={(parent_phone) => setForm({ ...form, parent_phone })} />
+          {staff ? (
+            <label className="flex min-h-11 items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                checked={form.has_key}
+                onChange={(event) => setForm({ ...form, has_key: event.target.checked })}
+                className="size-5 accent-blue"
+              />
+              This parent has a dojo key
+            </label>
+          ) : null}
           <Field label="Notes" value={form.notes} onChange={(notes) => setForm({ ...form, notes })} />
           <SaveButton pending={save.isPending} error={save.isError ? errText(save.error) : ""} />
         </form>
