@@ -10,10 +10,6 @@ alter table students add column if not exists other_silver integer not null defa
 alter table students add column if not exists other_bronze integer not null default 0;
 alter table students add column if not exists photo_version integer not null default 0;
 alter table students add column if not exists added_by text not null default '';
--- A second parent or guardian who can also edit the card and check the athlete in.
-alter table students add column if not exists parent2_name text not null default '';
-alter table students add column if not exists parent2_email text not null default '';
-alter table students add column if not exists parent2_phone text not null default '';
 
 create table if not exists student_photos (
   student_id integer primary key references students(id) on delete cascade,
