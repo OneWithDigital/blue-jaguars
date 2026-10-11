@@ -80,6 +80,9 @@ export type Student = {
   parent_name: string;
   parent_email: string;
   parent_phone: string;
+  parent2_name: string;
+  parent2_email: string;
+  parent2_phone: string;
   notes: string;
   has_key: boolean;
   is_sample: boolean;
@@ -279,6 +282,12 @@ async function userEmail(sql: Awaited<ReturnType<typeof getSql>>, userId: string
   return (users[0]?.email ?? "").trim().toLowerCase();
 }
 
+function isParentOf(email: string, row: { parent_email: string; parent2_email: string }): boolean {
+  const mine = email.trim().toLowerCase();
+  if (!mine) return false;
+  return row.parent_email.trim().toLowerCase() === mine || row.parent2_email.trim().toLowerCase() === mine;
+}
+
 async function assertCanMark(
   sql: Awaited<ReturnType<typeof getSql>>,
   userId: string,
@@ -287,9 +296,10 @@ async function assertCanMark(
 ): Promise<void> {
   if (role === "owner" || role === "instructor") return;
   const email = await userEmail(sql, userId);
-  const rows = await sql<{ parent_email: string }>`select parent_email from students where id = ${studentId}`;
-  const parent = (rows[0]?.parent_email ?? "").trim().toLowerCase();
-  if (!email || parent !== email) throw new Error("You can only mark your own athletes");
+  const rows = await sql<{ parent_email: string; parent2_email: string }>`
+    select parent_email, parent2_email from students where id = ${studentId}
+  `;
+  if (!rows[0] || !isParentOf(email, rows[0])) throw new Error("You can only mark your own athletes");
 }
 
 export const getMembership = createServerFn({ method: "GET" })
@@ -403,7 +413,8 @@ export const getPortal = createServerFn({ method: "GET" })
     `;
     const students = await sql<Student>`
       select id, student_name, belt, age, gender, skill, style, events, weight_class,
-             parent_name, parent_email, parent_phone, notes, has_key, is_sample,
+             parent_name, parent_email, parent_phone, parent2_name, parent2_email, parent2_phone,
+             notes, has_key, is_sample,
              weapon, wins, losses, other_gold, other_silver, other_bronze, photo_version
       from students
       order by student_name, id
@@ -840,6 +851,13 @@ export const deleteInstructor = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+function emailOrEmpty(value: unknown, label: string): string {
+  const raw = text(value, 120).toLowerCase();
+  if (!raw) return "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) throw new Error(`${label} does not look like an email address`);
+  return raw;
+}
+
 function count(value: unknown, label: string): number {
   const raw = String(value ?? "").trim();
   if (!raw) return 0;
@@ -865,13 +883,12 @@ async function assertCanEditStudent(
 ): Promise<void> {
   if (role === "owner" || role === "instructor") return;
   const email = await userEmail(sql, userId);
-  const rows = await sql<{ parent_email: string; added_by: string }>`
-    select parent_email, added_by from students where id = ${studentId}
+  const rows = await sql<{ parent_email: string; parent2_email: string; added_by: string }>`
+    select parent_email, parent2_email, added_by from students where id = ${studentId}
   `;
   const row = rows[0];
   if (!row) throw new Error("That athlete is not on the roster");
-  const parent = row.parent_email.trim().toLowerCase();
-  if ((email && parent === email) || row.added_by === userId) return;
+  if (isParentOf(email, row) || row.added_by === userId) return;
   throw new Error("You can only edit your own athletes");
 }
 
@@ -908,6 +925,9 @@ export const upsertStudent = createServerFn({ method: "POST" })
       parent_name: text(raw.parent_name, 80),
       parent_email: text(raw.parent_email, 120),
       parent_phone: text(raw.parent_phone, 40),
+      parent2_name: text(raw.parent2_name, 80),
+      parent2_email: emailOrEmpty(raw.parent2_email, "Second parent email"),
+      parent2_phone: text(raw.parent2_phone, 40),
       notes: text(raw.notes, 240),
       has_key: raw.has_key === true || raw.has_key === "true",
       weapon: text(raw.weapon, 60),
@@ -924,19 +944,19 @@ export const upsertStudent = createServerFn({ method: "POST" })
     const sql = await getSql();
     let parentName = data.parent_name;
     let parentEmail = data.parent_email;
+    const viewerEmail = staff ? "" : await userEmail(sql, context.userId);
     if (!staff) {
-      // A parent's athletes are always tied to the parent's own sign-in, so
-      // check-ins and edits line up with who is signed in.
-      parentEmail = await userEmail(sql, context.userId);
-      if (!parentEmail) throw new Error("Your sign-in has no email address");
+      if (!viewerEmail) throw new Error("Your sign-in has no email address");
       if (!parentName) parentName = await userName(sql, context.userId);
     }
     if (!parentName) throw new Error("Parent is required");
     if (data.id) {
       await assertCanEditStudent(sql, context.userId, role, data.id);
-      const prev = await sql<{ student_name: string; has_key: boolean }>`
-        select student_name, has_key from students where id = ${data.id}
+      const prev = await sql<{ student_name: string; has_key: boolean; parent_email: string }>`
+        select student_name, has_key, parent_email from students where id = ${data.id}
       `;
+      // A parent edit never moves the card off the main parent's sign-in.
+      if (!staff) parentEmail = prev[0]?.parent_email || viewerEmail;
       const hasKey = staff ? data.has_key : asBool(prev[0]?.has_key);
       await sql`
         update students set
@@ -951,6 +971,9 @@ export const upsertStudent = createServerFn({ method: "POST" })
           parent_name = ${parentName},
           parent_email = ${parentEmail},
           parent_phone = ${data.parent_phone},
+          parent2_name = ${data.parent2_name},
+          parent2_email = ${data.parent2_email},
+          parent2_phone = ${data.parent2_phone},
           notes = ${data.notes},
           has_key = ${hasKey},
           weapon = ${data.weapon},
@@ -971,27 +994,31 @@ export const upsertStudent = createServerFn({ method: "POST" })
       return { ok: true, id: data.id };
     }
     if (!staff) {
-      const twin = await sql<{ parent_email: string }>`
-        select parent_email from students where lower(student_name) = lower(${data.student_name}) limit 1
+      // A new card from a parent is always tied to their own sign-in.
+      parentEmail = viewerEmail;
+      const twin = await sql<{ parent_email: string; parent2_email: string }>`
+        select parent_email, parent2_email from students where lower(student_name) = lower(${data.student_name}) limit 1
       `;
       if (twin[0]) {
-        const theirs = twin[0].parent_email.trim().toLowerCase() === parentEmail.toLowerCase();
+        const theirs = isParentOf(viewerEmail, twin[0]);
         throw new Error(
           theirs
             ? `${data.student_name} is already on the roster under your email. Use Edit on that card.`
-            : `${data.student_name} is already on the roster. Ask an instructor to put your email on that card.`,
+            : `${data.student_name} is already on the roster. Ask the parent who added them, or an instructor, to add your email as the second parent on that card.`,
         );
       }
     }
     const made = await sql<{ id: number }>`
       insert into students (
         student_name, belt, age, gender, skill, style, events, weight_class,
-        parent_name, parent_email, parent_phone, notes, has_key, is_sample,
+        parent_name, parent_email, parent_phone, parent2_name, parent2_email, parent2_phone,
+        notes, has_key, is_sample,
         weapon, wins, losses, other_gold, other_silver, other_bronze, added_by
       )
       values (
         ${data.student_name}, ${data.belt}, ${data.age}, ${data.gender}, ${data.skill}, ${data.style},
         ${data.events}, ${data.weight_class}, ${parentName}, ${parentEmail}, ${data.parent_phone},
+        ${data.parent2_name}, ${data.parent2_email}, ${data.parent2_phone},
         ${data.notes}, ${staff ? data.has_key : false}, false,
         ${data.weapon}, ${data.wins}, ${data.losses}, ${data.other_gold}, ${data.other_silver}, ${data.other_bronze},
         ${context.userId}

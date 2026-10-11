@@ -511,7 +511,7 @@ function Home({ data }: { data: PortalData }) {
         <p className="mt-2 max-w-3xl font-display text-4xl leading-none tracking-wide sm:text-5xl">{data.settings.motto}</p>
       ) : null}
       <p className="mt-3 max-w-2xl text-mute">{data.settings.about}</p>
-      {!isStaff(data.role) && !data.students.some((student) => ownsAthlete(data.viewer_email, student.parent_email)) ? (
+      {!isStaff(data.role) && !data.students.some((student) => ownsAthlete(data.viewer_email, student)) ? (
         <Link
           to="/app"
           search={{ section: "roster" }}
@@ -1030,24 +1030,24 @@ function Instructors({ data }: { data: PortalData }) {
 }
 
 function canEditAthlete(data: PortalData, student: Student) {
-  return isStaff(data.role) || ownsAthlete(data.viewer_email, student.parent_email);
+  return isStaff(data.role) || ownsAthlete(data.viewer_email, student);
 }
 
 function Roster({ data }: { data: PortalData }) {
   const staff = isStaff(data.role);
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
-  const mine = data.students.filter((student) => ownsAthlete(data.viewer_email, student.parent_email));
+  const mine = data.students.filter((student) => ownsAthlete(data.viewer_email, student));
   const rows = data.students
     .filter((student) => {
       if (!needle) return true;
-      return [student.student_name, student.parent_name, student.parent_email, student.parent_phone, student.belt, student.events, student.weapon]
+      return [student.student_name, student.parent_name, student.parent_email, student.parent_phone, student.parent2_name, student.parent2_email, student.parent2_phone, student.belt, student.events, student.weapon]
         .join(" ")
         .toLowerCase()
         .includes(needle);
     })
     // A family's own athletes first.
-    .sort((a, b) => Number(ownsAthlete(data.viewer_email, b.parent_email)) - Number(ownsAthlete(data.viewer_email, a.parent_email)));
+    .sort((a, b) => Number(ownsAthlete(data.viewer_email, b)) - Number(ownsAthlete(data.viewer_email, a)));
   return (
     <div>
       <PageHead
@@ -1122,6 +1122,19 @@ function Roster({ data }: { data: PortalData }) {
                   ) : null}
                   {student.parent_email ? (
                     <a className="mt-1 block break-all text-mute" href={`mailto:${student.parent_email}`}>{student.parent_email}</a>
+                  ) : null}
+                  {student.parent2_name || student.parent2_email ? (
+                    <div className="mt-3">
+                      <p>{student.parent2_name || "Second parent"}</p>
+                      {student.parent2_phone ? (
+                        <a className="mt-1 flex items-center gap-2 text-paper" href={`tel:${student.parent2_phone}`}>
+                          <Phone className="size-4 text-gold" /> {student.parent2_phone}
+                        </a>
+                      ) : null}
+                      {student.parent2_email ? (
+                        <a className="mt-1 block break-all text-mute" href={`mailto:${student.parent2_email}`}>{student.parent2_email}</a>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
                 {editable ? (
@@ -1413,10 +1426,10 @@ function formatStamp(value: string) {
   return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function ownsAthlete(email: string, parentEmail: string) {
+function ownsAthlete(email: string, student: Pick<Student, "parent_email" | "parent2_email">) {
   const mine = email.trim().toLowerCase();
-  const parent = parentEmail.trim().toLowerCase();
-  return Boolean(mine) && mine === parent;
+  if (!mine) return false;
+  return student.parent_email.trim().toLowerCase() === mine || student.parent2_email.trim().toLowerCase() === mine;
 }
 
 function planned(data: PortalData, studentId: number, weekday: number, day: string) {
@@ -1429,14 +1442,14 @@ function Attendance({ data, embedded = false }: { data: PortalData; embedded?: b
   const dates = weekDates();
   const staff = isStaff(data.role);
   const days = dates.map((day, weekday) => ({ day, weekday })).filter(({ day }) => classesOn(data.classes, data.skips, day).length).map(({ weekday }) => weekday);
-  const editable = (parentEmail: string) => staff || ownsAthlete(data.viewer_email, parentEmail);
+  const editable = (student: Student) => staff || ownsAthlete(data.viewer_email, student);
   const save = useSave<{ student_id: number; day: string; going: boolean }>((input) => setAttendance({ data: input }));
   const repeat = useSave(() =>
     saveUsualWeek({
       data: {
         days: dates,
         marks: data.students
-          .filter((student) => editable(student.parent_email))
+          .filter((student) => editable(student))
           .flatMap((student) =>
             days.map((weekday) => ({
               student_id: student.id,
@@ -1447,11 +1460,11 @@ function Attendance({ data, embedded = false }: { data: PortalData; embedded?: b
       },
     }),
   );
-  const mineCount = data.students.filter((student) => ownsAthlete(data.viewer_email, student.parent_email)).length;
+  const mineCount = data.students.filter((student) => ownsAthlete(data.viewer_email, student)).length;
   const repeatButton = (
     <button
       type="button"
-      disabled={repeat.isPending || !data.students.some((student) => editable(student.parent_email))}
+      disabled={repeat.isPending || !data.students.some((student) => editable(student))}
       onClick={() => repeat.mutate(undefined)}
       className="min-h-11 rounded-full bg-blue px-4 text-sm font-semibold text-ink disabled:opacity-60"
     >
@@ -1488,7 +1501,7 @@ function Attendance({ data, embedded = false }: { data: PortalData; embedded?: b
                 <ul className="mt-3 divide-y divide-line">
                   {data.students.map((student) => {
                     const on = planned(data, student.id, weekday, day);
-                    const can = editable(student.parent_email);
+                    const can = editable(student);
                     return (
                       <li key={student.id} className="flex items-center justify-between gap-3 py-2">
                         <span>
@@ -2264,6 +2277,9 @@ function StudentEditor({ existing, staff }: { existing?: Student; staff: boolean
     parent_name: existing?.parent_name ?? (staff ? "" : (user?.displayName ?? "")),
     parent_email: existing?.parent_email ?? "",
     parent_phone: existing?.parent_phone ?? "",
+    parent2_name: existing?.parent2_name ?? "",
+    parent2_email: existing?.parent2_email ?? "",
+    parent2_phone: existing?.parent2_phone ?? "",
     notes: existing?.notes ?? "",
     has_key: existing?.has_key ?? false,
     weapon: existing?.weapon ?? "",
@@ -2508,6 +2524,17 @@ function StudentEditor({ existing, staff }: { existing?: Student; staff: boolean
             <p className="text-sm text-mute">This card is linked to the email you signed in with.</p>
           )}
           <Field label="Parent phone" value={form.parent_phone} onChange={(parent_phone) => setForm({ ...form, parent_phone })} />
+          <fieldset className="rounded-xl border border-line px-3 pt-2 pb-3">
+            <legend className="px-1 text-xs tracking-[0.14em] text-mute uppercase">Second parent (optional)</legend>
+            <p className="mb-2 text-xs text-mute">
+              Use the email they sign in with. They can then update this card and check the athlete in too.
+            </p>
+            <div className="grid gap-3">
+              <Field label="Name" value={form.parent2_name} onChange={(parent2_name) => setForm({ ...form, parent2_name })} />
+              <Field label="Email" type="email" value={form.parent2_email} onChange={(parent2_email) => setForm({ ...form, parent2_email })} />
+              <Field label="Phone" value={form.parent2_phone} onChange={(parent2_phone) => setForm({ ...form, parent2_phone })} />
+            </div>
+          </fieldset>
           {staff ? (
             <label className="flex min-h-11 items-center gap-3 text-sm">
               <input
