@@ -438,39 +438,37 @@ function MottoPoster() {
           <CreedPair lead="My aim is accurate" because="Because I have trained it" />
           <CreedPair lead="My mind is sharp" because="Because I have honed it" />
           <CreedPair lead="My body is strong" because="Because I have pushed it" />
-          <div className="relative mx-auto mt-4 h-56 w-56">
-            <p className="absolute top-1/2 left-0 -translate-y-1/2 -rotate-90 font-creed text-2xl tracking-[0.2em] text-[#d5dbe6]">
-              Blue
-            </p>
-            <p className="absolute top-1/2 right-0 -translate-y-1/2 rotate-90 font-creed text-2xl tracking-[0.18em] text-[#d5dbe6]">
-              Karate
-            </p>
-            <svg viewBox="0 0 200 200" className="absolute inset-0" aria-hidden="true">
-              <circle cx="100" cy="100" r="78" fill="none" stroke="#7dff3c" strokeWidth="7" />
-              <circle cx="100" cy="100" r="68" fill="#071426" />
-              <circle cx="100" cy="100" r="68" fill="none" stroke="#12386e" strokeWidth="10" />
-              <g fill="none" stroke="#1d4f96" strokeWidth="1">
-                <path d="M48 70 L70 48 L92 70 L70 92 Z" />
-                <path d="M108 58 L128 40 L148 62 L126 80 Z" />
-                <path d="M46 120 L68 104 L90 126 L66 146 Z" />
-                <path d="M112 118 L136 108 L154 132 L128 148 Z" />
-              </g>
-              <g transform="translate(46 48)">
-                <path
-                  fill="#1f6fe0"
-                  d="M18 46c8-22 28-34 48-30 10 2 16 8 22 6 4-2 10 2 12 8 6 2 14 12 12 24-1 8-8 12-8 20 0 10-8 22-22 26-16 4-30-2-40-12-6 6-16 8-22 2-8-8-4-20 2-26-8-6-12-16-8-24 2-2 4 2 4 6z"
-                />
-                <path fill="#0c3f8c" d="M34 28c6 4 8 12 4 16-6-2-10-8-8-14 1-1 3-2 4-2zM58 22c8 2 12 10 8 16-8-2-14-8-12-14 1-1 3-2 4-2zM78 36c6 6 6 14 0 16-4-6-4-12 0-16z" />
-                <path fill="#f2c14e" d="M62 48c4 0 8 4 7 8-4 1-8-2-8-6 0-1 0-2 1-2z" />
-                <path fill="#111" d="M66 51c1.4 0 2 1.2 2 2s-.8 2-2 2-2-1-2-2 .8-2 2-2z" />
-                <path fill="#f4f7fb" d="M86 62c8 2 14 8 14 8l-6 10-16 2c2-4 4-12 8-20z" />
-                <path fill="#111" d="M90 70l8 4-10 6z" />
-                <path stroke="#9fd0ff" strokeWidth="1.4" d="M98 74l16 2M100 80l18 6" />
-              </g>
-            </svg>
-            <p className="absolute bottom-9 left-1/2 -translate-x-1/2 font-creed text-xl tracking-wide text-[#3c8dff]">スポーツ空手</p>
+          <div className="mx-auto mt-4 flex w-fit items-center justify-center gap-1">
+            <p className="rotate-180 font-creed text-2xl tracking-[0.2em] text-[#d5dbe6] [writing-mode:vertical-rl]">Blue</p>
+            <div className="relative size-52 shrink-0 sm:size-56">
+              <svg viewBox="0 0 200 200" className="absolute inset-0 size-full" aria-hidden="true">
+                <circle cx="100" cy="100" r="78" fill="none" stroke="#7dff3c" strokeWidth="7" />
+                <circle cx="100" cy="100" r="68" fill="#071426" />
+                <circle cx="100" cy="100" r="68" fill="none" stroke="#12386e" strokeWidth="10" />
+                <g fill="none" stroke="#1d4f96" strokeWidth="1">
+                  <path d="M48 70 L70 48 L92 70 L70 92 Z" />
+                  <path d="M108 58 L128 40 L148 62 L126 80 Z" />
+                  <path d="M46 120 L68 104 L90 126 L66 146 Z" />
+                  <path d="M112 118 L136 108 L154 132 L128 148 Z" />
+                </g>
+                <g transform="translate(46 48)">
+                  <path
+                    fill="#1f6fe0"
+                    d="M18 46c8-22 28-34 48-30 10 2 16 8 22 6 4-2 10 2 12 8 6 2 14 12 12 24-1 8-8 12-8 20 0 10-8 22-22 26-16 4-30-2-40-12-6 6-16 8-22 2-8-8-4-20 2-26-8-6-12-16-8-24 2-2 4 2 4 6z"
+                  />
+                  <path fill="#0c3f8c" d="M34 28c6 4 8 12 4 16-6-2-10-8-8-14 1-1 3-2 4-2zM58 22c8 2 12 10 8 16-8-2-14-8-12-14 1-1 3-2 4-2zM78 36c6 6 6 14 0 16-4-6-4-12 0-16z" />
+                  <path fill="#f2c14e" d="M62 48c4 0 8 4 7 8-4 1-8-2-8-6 0-1 0-2 1-2z" />
+                  <path fill="#111" d="M66 51c1.4 0 2 1.2 2 2s-.8 2-2 2-2-1-2-2 .8-2 2-2z" />
+                  <path fill="#f4f7fb" d="M86 62c8 2 14 8 14 8l-6 10-16 2c2-4 4-12 8-20z" />
+                  <path fill="#111" d="M90 70l8 4-10 6z" />
+                  <path stroke="#9fd0ff" strokeWidth="1.4" d="M98 74l16 2M100 80l18 6" />
+                </g>
+              </svg>
+            </div>
+            <p className="font-creed text-2xl tracking-[0.18em] text-[#d5dbe6] [writing-mode:vertical-rl]">Karate</p>
           </div>
-          <svg viewBox="0 0 280 36" className="mx-auto -mt-2 h-8 w-56" aria-hidden="true">
+          <p className="mt-1 font-creed text-base whitespace-nowrap tracking-[0.12em] text-[#3c8dff]">スポーツ空手</p>
+          <svg viewBox="0 0 280 36" className="mx-auto h-8 w-56" aria-hidden="true">
             <path id="own-arc" d="M16 32 Q140 2 264 32" fill="none" />
             <text fill="#d5dbe6" fontFamily="Bebas Neue, Barlow Condensed, sans-serif" fontSize="18" letterSpacing="4">
               <textPath href="#own-arc" startOffset="50%" textAnchor="middle">
