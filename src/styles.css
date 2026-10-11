@@ -81,7 +81,8 @@
 }
 
 .creed-poster {
-  position: relative;
+  /* No position here: the dialog's own fixed positioning must win, or the
+     poster drops below the page and only the dark overlay shows. */
   background-color: #07090d;
   background-image:
     radial-gradient(circle at 14% 16%, rgba(48, 140, 255, 0.38), transparent 24%),

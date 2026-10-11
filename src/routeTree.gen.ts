@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiStudentPhotoIdRouteImport } from './routes/api/student-photo/$id'
 import { Route as ApiYoutubeCallbackRouteImport } from './routes/api/youtube/callback'
 import { Route as ApiYoutubeConnectRouteImport } from './routes/api/youtube/connect'
 
@@ -42,6 +43,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiStudentPhotoIdRoute = ApiStudentPhotoIdRouteImport.update({
+  id: '/api/student-photo/$id',
+  path: '/api/student-photo/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiYoutubeCallbackRoute = ApiYoutubeCallbackRouteImport.update({
   id: '/api/youtube/callback',
   path: '/api/youtube/callback',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/student-photo/$id': typeof ApiStudentPhotoIdRoute
   '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
   '/api/youtube/connect': typeof ApiYoutubeConnectRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/student-photo/$id': typeof ApiStudentPhotoIdRoute
   '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
   '/api/youtube/connect': typeof ApiYoutubeConnectRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/student-photo/$id': typeof ApiStudentPhotoIdRoute
   '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
   '/api/youtube/connect': typeof ApiYoutubeConnectRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/api/auth/$'
+    | '/api/student-photo/$id'
     | '/api/youtube/callback'
     | '/api/youtube/connect'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/api/auth/$'
+    | '/api/student-photo/$id'
     | '/api/youtube/callback'
     | '/api/youtube/connect'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/api/auth/$'
+    | '/api/student-photo/$id'
     | '/api/youtube/callback'
     | '/api/youtube/connect'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiStudentPhotoIdRoute: typeof ApiStudentPhotoIdRoute
   ApiYoutubeCallbackRoute: typeof ApiYoutubeCallbackRoute
   ApiYoutubeConnectRoute: typeof ApiYoutubeConnectRoute
 }
@@ -158,6 +171,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/student-photo/$id': {
+      id: '/api/student-photo/$id'
+      path: '/api/student-photo/$id'
+      fullPath: '/api/student-photo/$id'
+      preLoaderRoute: typeof ApiStudentPhotoIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/youtube/callback': {
       id: '/api/youtube/callback'
       path: '/api/youtube/callback'
@@ -181,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiStudentPhotoIdRoute: ApiStudentPhotoIdRoute,
   ApiYoutubeCallbackRoute: ApiYoutubeCallbackRoute,
   ApiYoutubeConnectRoute: ApiYoutubeConnectRoute,
 }

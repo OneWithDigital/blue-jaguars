@@ -83,6 +83,24 @@ export type Student = {
   notes: string;
   has_key: boolean;
   is_sample: boolean;
+  weapon: string;
+  wins: number;
+  losses: number;
+  other_gold: number;
+  other_silver: number;
+  other_bronze: number;
+  photo_version: number;
+};
+
+export type FeedbackRow = {
+  id: number;
+  author_name: string;
+  author_email: string;
+  kind: "idea" | "problem" | "other";
+  page: string;
+  message: string;
+  resolved: boolean;
+  created_at: string;
 };
 
 export type Vendor = {
@@ -158,6 +176,8 @@ export type PortalData = {
   posts: BoardPost[];
   access: AccessMember[];
   hasSample: boolean;
+  tour_done: boolean;
+  feedback: FeedbackRow[];
 };
 
 function asBool(value: unknown): boolean {
@@ -383,7 +403,8 @@ export const getPortal = createServerFn({ method: "GET" })
     `;
     const students = await sql<Student>`
       select id, student_name, belt, age, gender, skill, style, events, weight_class,
-             parent_name, parent_email, parent_phone, notes, has_key, is_sample
+             parent_name, parent_email, parent_phone, notes, has_key, is_sample,
+             weapon, wins, losses, other_gold, other_silver, other_bronze, photo_version
       from students
       order by student_name, id
     `;
@@ -430,6 +451,17 @@ export const getPortal = createServerFn({ method: "GET" })
       ) recent
       order by created_at asc
     `;
+    const tourRows = await sql<{ tour_done: boolean }>`
+      select tour_done from dojo_members where user_id = ${context.userId} limit 1
+    `;
+    const feedback = staff
+      ? await sql<FeedbackRow>`
+          select id, author_name, author_email, kind, page, message, resolved, created_at::text as created_at
+          from site_feedback
+          order by resolved asc, created_at desc
+          limit 100
+        `
+      : [];
     const visibleSettings: Settings = {
       ...settings,
       member_code: role === "owner" ? settings.member_code : "",
@@ -467,6 +499,12 @@ export const getPortal = createServerFn({ method: "GET" })
         age: row.age == null ? null : asNum(row.age),
         has_key: staff ? asBool(row.has_key) : false,
         is_sample: asBool(row.is_sample),
+        wins: asNum(row.wins),
+        losses: asNum(row.losses),
+        other_gold: asNum(row.other_gold),
+        other_silver: asNum(row.other_silver),
+        other_bronze: asNum(row.other_bronze),
+        photo_version: asNum(row.photo_version),
       })),
       vendors: vendors.map((row) => ({ ...row, id: asNum(row.id) })),
       results: results.map((row) => ({
@@ -486,6 +524,13 @@ export const getPortal = createServerFn({ method: "GET" })
       dues: dues.map((row) => ({ ...row, student_id: asNum(row.student_id), paid: asBool(row.paid) })),
       posts: posts.map((row) => ({ ...row, id: asNum(row.id) })),
       hasSample,
+      tour_done: asBool(tourRows[0]?.tour_done),
+      feedback: feedback.map((row) => ({
+        ...row,
+        id: asNum(row.id),
+        kind: row.kind === "problem" || row.kind === "other" ? row.kind : "idea",
+        resolved: asBool(row.resolved),
+      })),
     };
   });
 
@@ -795,6 +840,41 @@ export const deleteInstructor = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+function count(value: unknown, label: string): number {
+  const raw = String(value ?? "").trim();
+  if (!raw) return 0;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 999) throw new Error(`${label} should be a whole number from 0 to 999`);
+  return n;
+}
+
+async function userName(sql: Awaited<ReturnType<typeof getSql>>, userId: string): Promise<string> {
+  const users = await sql<{ name: string }>`select name from "user" where id = ${userId} limit 1`;
+  return (users[0]?.name ?? "").trim();
+}
+
+/**
+ * Staff can edit any athlete. A parent can add athletes (tied to their sign-in
+ * email) and edit only the ones whose parent email matches it.
+ */
+async function assertCanEditStudent(
+  sql: Awaited<ReturnType<typeof getSql>>,
+  userId: string,
+  role: Role,
+  studentId: number,
+): Promise<void> {
+  if (role === "owner" || role === "instructor") return;
+  const email = await userEmail(sql, userId);
+  const rows = await sql<{ parent_email: string; added_by: string }>`
+    select parent_email, added_by from students where id = ${studentId}
+  `;
+  const row = rows[0];
+  if (!row) throw new Error("That athlete is not on the roster");
+  const parent = row.parent_email.trim().toLowerCase();
+  if ((email && parent === email) || row.added_by === userId) return;
+  throw new Error("You can only edit your own athletes");
+}
+
 export const upsertStudent = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => {
@@ -825,18 +905,39 @@ export const upsertStudent = createServerFn({ method: "POST" })
       style,
       events,
       weight_class,
-      parent_name: required(raw.parent_name, "Parent", 80),
+      parent_name: text(raw.parent_name, 80),
       parent_email: text(raw.parent_email, 120),
       parent_phone: text(raw.parent_phone, 40),
       notes: text(raw.notes, 240),
       has_key: raw.has_key === true || raw.has_key === "true",
+      weapon: text(raw.weapon, 60),
+      wins: count(raw.wins, "Wins"),
+      losses: count(raw.losses, "Losses"),
+      other_gold: count(raw.other_gold, "Gold medals"),
+      other_silver: count(raw.other_silver, "Silver medals"),
+      other_bronze: count(raw.other_bronze, "Bronze medals"),
     };
   })
   .handler(async ({ context, data }) => {
-    await requireStaff(context.userId);
+    const role = await requireMember(context.userId);
+    const staff = role === "owner" || role === "instructor";
     const sql = await getSql();
+    let parentName = data.parent_name;
+    let parentEmail = data.parent_email;
+    if (!staff) {
+      // A parent's athletes are always tied to the parent's own sign-in, so
+      // check-ins and edits line up with who is signed in.
+      parentEmail = await userEmail(sql, context.userId);
+      if (!parentEmail) throw new Error("Your sign-in has no email address");
+      if (!parentName) parentName = await userName(sql, context.userId);
+    }
+    if (!parentName) throw new Error("Parent is required");
     if (data.id) {
-      const prev = await sql<{ student_name: string }>`select student_name from students where id = ${data.id}`;
+      await assertCanEditStudent(sql, context.userId, role, data.id);
+      const prev = await sql<{ student_name: string; has_key: boolean }>`
+        select student_name, has_key from students where id = ${data.id}
+      `;
+      const hasKey = staff ? data.has_key : asBool(prev[0]?.has_key);
       await sql`
         update students set
           student_name = ${data.student_name},
@@ -847,11 +948,17 @@ export const upsertStudent = createServerFn({ method: "POST" })
           style = ${data.style},
           events = ${data.events},
           weight_class = ${data.weight_class},
-          parent_name = ${data.parent_name},
-          parent_email = ${data.parent_email},
+          parent_name = ${parentName},
+          parent_email = ${parentEmail},
           parent_phone = ${data.parent_phone},
           notes = ${data.notes},
-          has_key = ${data.has_key},
+          has_key = ${hasKey},
+          weapon = ${data.weapon},
+          wins = ${data.wins},
+          losses = ${data.losses},
+          other_gold = ${data.other_gold},
+          other_silver = ${data.other_silver},
+          other_bronze = ${data.other_bronze},
           is_sample = false
         where id = ${data.id}
       `;
@@ -861,19 +968,129 @@ export const upsertStudent = createServerFn({ method: "POST" })
           update mskc_results set student_name = ${data.student_name} where student_name = ${oldName}
         `;
       }
-    } else {
-      await sql`
-        insert into students (
-          student_name, belt, age, gender, skill, style, events, weight_class,
-          parent_name, parent_email, parent_phone, notes, has_key, is_sample
-        )
-        values (
-          ${data.student_name}, ${data.belt}, ${data.age}, ${data.gender}, ${data.skill}, ${data.style},
-          ${data.events}, ${data.weight_class}, ${data.parent_name}, ${data.parent_email}, ${data.parent_phone},
-          ${data.notes}, ${data.has_key}, false
-        )
-      `;
+      return { ok: true, id: data.id };
     }
+    if (!staff) {
+      const twin = await sql<{ parent_email: string }>`
+        select parent_email from students where lower(student_name) = lower(${data.student_name}) limit 1
+      `;
+      if (twin[0]) {
+        const theirs = twin[0].parent_email.trim().toLowerCase() === parentEmail.toLowerCase();
+        throw new Error(
+          theirs
+            ? `${data.student_name} is already on the roster under your email. Use Edit on that card.`
+            : `${data.student_name} is already on the roster. Ask an instructor to put your email on that card.`,
+        );
+      }
+    }
+    const made = await sql<{ id: number }>`
+      insert into students (
+        student_name, belt, age, gender, skill, style, events, weight_class,
+        parent_name, parent_email, parent_phone, notes, has_key, is_sample,
+        weapon, wins, losses, other_gold, other_silver, other_bronze, added_by
+      )
+      values (
+        ${data.student_name}, ${data.belt}, ${data.age}, ${data.gender}, ${data.skill}, ${data.style},
+        ${data.events}, ${data.weight_class}, ${parentName}, ${parentEmail}, ${data.parent_phone},
+        ${data.notes}, ${staff ? data.has_key : false}, false,
+        ${data.weapon}, ${data.wins}, ${data.losses}, ${data.other_gold}, ${data.other_silver}, ${data.other_bronze},
+        ${context.userId}
+      )
+      returning id
+    `;
+    return { ok: true, id: asNum(made[0]?.id) };
+  });
+
+const PHOTO_MAX = 600_000;
+
+export const setStudentPhoto = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) => {
+    const raw = obj(input);
+    const id = asNum(raw.id);
+    if (!Number.isInteger(id) || id <= 0) throw new Error("Missing athlete");
+    const photo = String(raw.photo ?? "").trim();
+    if (photo && (!/^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(photo) || photo.length > PHOTO_MAX)) {
+      throw new Error("That photo is too large or not a photo. Try a different one.");
+    }
+    return { id, photo };
+  })
+  .handler(async ({ context, data }) => {
+    const role = await requireMember(context.userId);
+    const sql = await getSql();
+    await assertCanEditStudent(sql, context.userId, role, data.id);
+    if (data.photo) {
+      await sql`
+        insert into student_photos (student_id, data, updated_at) values (${data.id}, ${data.photo}, now())
+        on conflict (student_id) do update set data = excluded.data, updated_at = now()
+      `;
+    } else {
+      await sql`delete from student_photos where student_id = ${data.id}`;
+    }
+    if (data.photo) {
+      await sql`update students set photo_version = photo_version + 1 where id = ${data.id}`;
+    } else {
+      await sql`update students set photo_version = 0 where id = ${data.id}`;
+    }
+    return { ok: true };
+  });
+
+/** Photo bytes for the roster, for signed-in team members only. */
+export async function studentPhotoFor(userId: string, studentId: number): Promise<string | null> {
+  const role = await roleFor(userId);
+  if (!role) return null;
+  const sql = await getSql();
+  const rows = await sql<{ data: string }>`select data from student_photos where student_id = ${studentId}`;
+  return rows[0]?.data ?? null;
+}
+
+export const finishTour = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    await requireMember(context.userId);
+    const sql = await getSql();
+    await sql`update dojo_members set tour_done = true where user_id = ${context.userId}`;
+    return { ok: true };
+  });
+
+// One feedback note per user per minute keeps the inbox clean.
+const feedbackAt = new Map<string, number>();
+
+export const sendFeedback = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) => {
+    const raw = obj(input);
+    const kind = text(raw.kind, 10);
+    if (kind !== "idea" && kind !== "problem" && kind !== "other") throw new Error("Pick what kind of note this is");
+    const message = text(raw.message, 2000);
+    if (message.length < 3) throw new Error("Write a few words first");
+    return { kind, message, page: text(raw.page, 40) };
+  })
+  .handler(async ({ context, data }) => {
+    await requireMember(context.userId);
+    const last = feedbackAt.get(context.userId) ?? 0;
+    if (Date.now() - last < 60_000) throw new Error("Thanks! Give it a minute before sending another note.");
+    feedbackAt.set(context.userId, Date.now());
+    const sql = await getSql();
+    const name = await userName(sql, context.userId);
+    const email = await userEmail(sql, context.userId);
+    await sql`
+      insert into site_feedback (user_id, author_name, author_email, kind, page, message)
+      values (${context.userId}, ${name}, ${email}, ${data.kind}, ${data.page}, ${data.message})
+    `;
+    return { ok: true };
+  });
+
+export const resolveFeedback = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) => {
+    const raw = obj(input);
+    return { id: idOf(raw), resolved: raw.resolved === true || raw.resolved === "true" };
+  })
+  .handler(async ({ context, data }) => {
+    await requireStaff(context.userId);
+    const sql = await getSql();
+    await sql`update site_feedback set resolved = ${data.resolved} where id = ${data.id}`;
     return { ok: true };
   });
 
