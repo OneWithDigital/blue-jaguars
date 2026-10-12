@@ -48,7 +48,7 @@ export function IntroFilm({ onDone }: { onDone: () => void }) {
         <div className="max-w-xl rounded-2xl bg-ink/80 px-4 py-4 backdrop-blur-sm sm:px-5">
           <p className="font-display text-sm tracking-[0.42em] text-gold">MICHIGAN SPORT KARATE</p>
           <h1 className="mt-2 font-display text-6xl leading-none tracking-wide text-paper sm:text-8xl">BLUE JAGUARS</h1>
-          <p className="mt-3 max-w-md text-mute">Sports Karate. Members only.</p>
+          <p className="mt-3 max-w-md text-mute">The team room for Blue Jaguars families. New family? Tap Enter and create your account.</p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
               type="button"

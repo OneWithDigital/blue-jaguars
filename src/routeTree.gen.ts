@@ -11,8 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ResetRouteImport } from './routes/reset'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiStudentPhotoIdRouteImport } from './routes/api/student-photo/$id'
 import { Route as ApiYoutubeCallbackRouteImport } from './routes/api/youtube/callback'
@@ -28,6 +30,11 @@ const AppRoute = AppRouteImport.update({
   path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JoinRoute = JoinRouteImport.update({
+  id: '/join',
+  path: '/join',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -36,6 +43,11 @@ const LoginRoute = LoginRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetRoute = ResetRouteImport.update({
+  id: '/reset',
+  path: '/reset',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -62,8 +74,10 @@ const ApiYoutubeConnectRoute = ApiYoutubeConnectRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
+  '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
+  '/reset': typeof ResetRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/student-photo/$id': typeof ApiStudentPhotoIdRoute
   '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
@@ -72,8 +86,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
+  '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
+  '/reset': typeof ResetRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/student-photo/$id': typeof ApiStudentPhotoIdRoute
   '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
@@ -83,8 +99,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRoute
+  '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
+  '/reset': typeof ResetRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/student-photo/$id': typeof ApiStudentPhotoIdRoute
   '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
@@ -95,8 +113,10 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/join'
     | '/login'
     | '/privacy'
+    | '/reset'
     | '/api/auth/$'
     | '/api/student-photo/$id'
     | '/api/youtube/callback'
@@ -105,8 +125,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/app'
+    | '/join'
     | '/login'
     | '/privacy'
+    | '/reset'
     | '/api/auth/$'
     | '/api/student-photo/$id'
     | '/api/youtube/callback'
@@ -115,8 +137,10 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/app'
+    | '/join'
     | '/login'
     | '/privacy'
+    | '/reset'
     | '/api/auth/$'
     | '/api/student-photo/$id'
     | '/api/youtube/callback'
@@ -126,8 +150,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRoute
+  JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
+  ResetRoute: typeof ResetRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiStudentPhotoIdRoute: typeof ApiStudentPhotoIdRoute
   ApiYoutubeCallbackRoute: typeof ApiYoutubeCallbackRoute
@@ -150,6 +176,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/join': {
+      id: '/join'
+      path: '/join'
+      fullPath: '/join'
+      preLoaderRoute: typeof JoinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -162,6 +195,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset': {
+      id: '/reset'
+      path: '/reset'
+      fullPath: '/reset'
+      preLoaderRoute: typeof ResetRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -198,8 +238,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRoute,
+  JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
+  ResetRoute: ResetRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiStudentPhotoIdRoute: ApiStudentPhotoIdRoute,
   ApiYoutubeCallbackRoute: ApiYoutubeCallbackRoute,
