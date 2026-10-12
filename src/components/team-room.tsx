@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import {
   Camera,
   CalendarDays,
+  CircleCheck,
   Clapperboard,
   ExternalLink,
   GraduationCap,
@@ -101,6 +102,7 @@ import {
 import { Boot, errText } from "@/components/boot";
 import { Gallery, LatestFilm } from "@/components/gallery";
 import { FeedbackButton, FeedbackInbox, FeedbackSheet, TourButton, WelcomeTour } from "@/components/welcome";
+import { JoinLinkCard } from "@/components/join-link";
 
 const NAV: { id: Section; label: string; icon: typeof LayoutGrid; staff?: boolean }[] = [
   { id: "home", label: "Floor", icon: LayoutGrid },
@@ -490,6 +492,102 @@ function MottoPoster() {
   );
 }
 
+function SetupChecklist({ data }: { data: PortalData }) {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    try {
+      setHidden(localStorage.getItem("bj-setup-hidden") === "1");
+    } catch {
+      // storage unavailable
+    }
+  }, []);
+  if (isStaff(data.role) || hidden) return null;
+  const mine = data.students.filter((student) => ownsAthlete(data.viewer_email, student));
+  const added = mine.length > 0;
+  const photo = mine.some((student) => student.photo_version > 0);
+  const checkedIn = mine.some(
+    (student) =>
+      data.usual.some((mark) => mark.student_id === student.id && mark.going) ||
+      data.attendance.some((mark) => mark.student_id === student.id && mark.going),
+  );
+  if (added && photo && checkedIn) return null;
+  const first = mine[0]?.student_name.split(" ")[0] ?? "your athlete";
+  const steps: { done: boolean; title: string; body: string; section: Section; cta: string }[] = [
+    {
+      done: added,
+      title: "Add your athlete",
+      body: "Name, belt, and age. Tournament details can wait.",
+      section: "roster",
+      cta: "Add my athlete",
+    },
+    {
+      done: photo,
+      title: "Add a photo",
+      body: `Helps coaches and teammates put a face to ${added ? first : "the name"}.`,
+      section: "roster",
+      cta: "Add photo",
+    },
+    {
+      done: checkedIn,
+      title: "Check in for class",
+      body: "Tap Coming on the days you'll be there so coaches can plan the floor.",
+      section: "calendar",
+      cta: "Check in",
+    },
+  ];
+  const next = steps.find((step) => !step.done);
+  const doneCount = steps.filter((step) => step.done).length;
+  return (
+    <section className="mb-6 rounded-2xl border border-blue/50 bg-blue/10 px-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs tracking-[0.16em] text-gold uppercase">Getting started · {doneCount} of 3 done</p>
+          <h2 className="mt-1 font-display text-3xl leading-none tracking-wide">Set up your family</h2>
+        </div>
+        <button
+          type="button"
+          className="min-h-11 px-2 text-sm text-mute"
+          onClick={() => {
+            setHidden(true);
+            try {
+              localStorage.setItem("bj-setup-hidden", "1");
+            } catch {
+              // storage unavailable
+            }
+          }}
+        >
+          Hide
+        </button>
+      </div>
+      <ol className="mt-3 space-y-2">
+        {steps.map((step, index) => (
+          <li key={step.title} className="flex items-start gap-3">
+            {step.done ? (
+              <CircleCheck className="mt-0.5 size-6 shrink-0 text-blue" />
+            ) : (
+              <span className="grid size-6 shrink-0 place-items-center rounded-full border border-line text-xs text-mute">{index + 1}</span>
+            )}
+            <span className={step.done ? "text-mute line-through" : ""}>
+              <span className="block font-semibold">{step.title}</span>
+              {step.done ? null : <span className="block text-sm text-mute">{step.body}</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
+      {next ? (
+        <Link
+          to="/app"
+          search={{ section: next.section }}
+          hash={next.section === "calendar" ? "this-week" : undefined}
+          className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-blue px-5 text-sm font-semibold text-ink"
+        >
+          {next.cta}
+        </Link>
+      ) : null}
+    </section>
+  );
+}
+
 function Home({ data }: { data: PortalData }) {
   const upcoming = nextSession(data.classes, data.skips);
   const today = localDateISO();
@@ -503,6 +601,7 @@ function Home({ data }: { data: PortalData }) {
 
   return (
     <div>
+      <SetupChecklist data={data} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-display text-sm tracking-[0.28em] text-gold">{data.settings.city.toUpperCase()}</p>
         <MottoPoster />
@@ -511,19 +610,6 @@ function Home({ data }: { data: PortalData }) {
         <p className="mt-2 max-w-3xl font-display text-4xl leading-none tracking-wide sm:text-5xl">{data.settings.motto}</p>
       ) : null}
       <p className="mt-3 max-w-2xl text-mute">{data.settings.about}</p>
-      {!isStaff(data.role) && !data.students.some((student) => ownsAthlete(data.viewer_email, student)) ? (
-        <Link
-          to="/app"
-          search={{ section: "roster" }}
-          className="mt-5 flex items-center gap-3 rounded-2xl border border-blue/50 bg-blue/10 px-4 py-4"
-        >
-          <UserPlus className="size-6 shrink-0 text-blue" />
-          <span>
-            <span className="block font-semibold">Add your athlete</span>
-            <span className="block text-sm text-mute">Put your kid on the roster with a photo, belt, and events.</span>
-          </span>
-        </Link>
-      ) : null}
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <section className="min-w-[16rem] max-w-md flex-1 rounded-2xl border border-line bg-panel px-4 py-4">
           <p className="flex items-center gap-2 text-xs tracking-[0.16em] text-gold uppercase">
@@ -548,7 +634,7 @@ function Home({ data }: { data: PortalData }) {
             Pay monthly dues
           </a>
         ) : null}
-        <Link to="/app" search={{ section: "calendar" }} className="inline-flex min-h-11 items-center text-sm text-gold">
+        <Link to="/app" search={{ section: "calendar" }} hash="this-week" className="inline-flex min-h-11 items-center text-sm text-gold">
           Mark who is in this week
         </Link>
       </div>
@@ -1036,6 +1122,7 @@ function canEditAthlete(data: PortalData, student: Student) {
 function Roster({ data }: { data: PortalData }) {
   const staff = isStaff(data.role);
   const [q, setQ] = useState("");
+  const [justAdded, setJustAdded] = useState("");
   const needle = q.trim().toLowerCase();
   const mine = data.students.filter((student) => ownsAthlete(data.viewer_email, student));
   const rows = data.students
@@ -1053,8 +1140,29 @@ function Roster({ data }: { data: PortalData }) {
       <PageHead
         kicker="Athletes and parents"
         title="Roster"
-        action={<StudentEditor staff={staff} />}
+        action={<StudentEditor staff={staff} onAdded={setJustAdded} />}
       />
+      {justAdded ? (
+        <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue/50 bg-blue/10 px-4 py-4">
+          <p className="flex items-center gap-2">
+            <CircleCheck className="size-5 text-blue" />
+            <span>
+              <span className="font-semibold">{justAdded} is on the roster.</span>{" "}
+              <span className="text-mute">{staff ? "" : "Next, check in for class."}</span>
+            </span>
+          </p>
+          <span className="flex items-center gap-2">
+            {staff ? null : (
+              <Link to="/app" search={{ section: "calendar" }} hash="this-week" className="inline-flex min-h-11 items-center rounded-full bg-blue px-4 text-sm font-semibold text-ink">
+                Check in for class
+              </Link>
+            )}
+            <button type="button" className="min-h-11 px-2 text-sm text-mute" onClick={() => setJustAdded("")}>
+              Close
+            </button>
+          </span>
+        </div>
+      ) : null}
       {!staff && !mine.length ? (
         <div className="mb-4 rounded-2xl border border-blue/50 bg-blue/10 px-4 py-4">
           <p className="font-semibold">Add your athlete to get started</p>
@@ -1461,6 +1569,14 @@ function Attendance({ data, embedded = false }: { data: PortalData; embedded?: b
     }),
   );
   const mineCount = data.students.filter((student) => ownsAthlete(data.viewer_email, student)).length;
+  const [showAll, setShowAll] = useState(false);
+  const listed = staff || showAll ? data.students : data.students.filter((student) => editable(student));
+  useEffect(() => {
+    // Links from Home and Roster land straight on the check-in list.
+    if (window.location.hash === "#this-week") {
+      document.getElementById("this-week")?.scrollIntoView({ block: "start" });
+    }
+  }, []);
   const repeatButton = (
     <button
       type="button"
@@ -1472,20 +1588,37 @@ function Attendance({ data, embedded = false }: { data: PortalData; embedded?: b
     </button>
   );
   return (
-    <div>
+    <div id="this-week" className="scroll-mt-20">
       {embedded ? (
         <BlockHead title="This week" action={repeatButton} />
       ) : (
         <PageHead kicker="Who is coming" title="This week" action={repeatButton} />
       )}
       <p className="mb-4 max-w-2xl text-sm text-mute">
-        Repeat this week keeps the same checks next week. Changing one day only changes that date.
         {staff
-          ? " You can mark anyone. A family can mark an athlete only when their sign-in email matches the parent email on the roster."
-          : mineCount
-            ? ` You can mark ${mineCount === 1 ? "the athlete" : "the athletes"} tied to ${data.viewer_email}.`
-            : ` None of the roster emails match ${data.viewer_email}, so an admin needs to put that address on your athlete.`}
+          ? "Tap anyone to mark them coming. Repeat this week copies these checks to next week. A family can mark an athlete when their sign-in email is a parent email on the roster."
+          : "Tap Coming for each class your athlete will be at. Repeat this week copies your choices to next week. Changing one day only changes that date."}
       </p>
+      {!staff && !mineCount ? (
+        <div className="mb-4 rounded-2xl border border-blue/50 bg-blue/10 px-4 py-4">
+          <p className="font-semibold">Add your athlete to check in</p>
+          <p className="mt-1 text-sm text-mute">
+            Once your athlete is on the roster under your email, they show up here. Already added by a coach? Ask them to put {data.viewer_email} on the card.
+          </p>
+          <Link to="/app" search={{ section: "roster" }} className="mt-3 inline-flex min-h-11 items-center rounded-full bg-blue px-4 text-sm font-semibold text-ink">
+            Go to Roster
+          </Link>
+        </div>
+      ) : null}
+      {!staff && mineCount ? (
+        <button
+          type="button"
+          onClick={() => setShowAll(!showAll)}
+          className="mb-4 min-h-11 rounded-full border border-line px-4 text-sm text-mute"
+        >
+          {showAll ? "Show only my athletes" : `Show whole team (${data.students.length})`}
+        </button>
+      ) : null}
       {repeat.isError ? <p className="mb-3 text-sm text-gold">{errText(repeat.error)}</p> : null}
       {repeat.isSuccess ? <p className="mb-3 text-sm text-mute">Saved. Next week starts the same way.</p> : null}
       {days.length ? (
@@ -1499,14 +1632,14 @@ function Attendance({ data, embedded = false }: { data: PortalData; embedded?: b
                 <h2 className="text-xl">{WEEKDAYS[weekday]} · {formatDay(day)}</h2>
                 <p className="text-sm text-gold">{titles.join(" · ")} · {coming} coming</p>
                 <ul className="mt-3 divide-y divide-line">
-                  {data.students.map((student) => {
+                  {listed.map((student) => {
                     const on = planned(data, student.id, weekday, day);
                     const can = editable(student);
                     return (
                       <li key={student.id} className="flex items-center justify-between gap-3 py-2">
                         <span>
                           {student.student_name}
-                          {!staff && can ? <span className="ml-2 text-xs tracking-[0.14em] text-gold uppercase">Yours</span> : null}
+                          {!staff && can && showAll ? <span className="ml-2 text-xs tracking-[0.14em] text-gold uppercase"> Yours</span> : null}
                         </span>
                         {can ? (
                           <button
@@ -1598,6 +1731,7 @@ function Desk({ data }: { data: PortalData }) {
   return (
     <div className="space-y-8">
       <PageHead kicker={owner ? "Owner" : "Admin"} title="Desk" />
+      {owner ? <JoinLinkCard memberCode={data.settings.member_code} teamName={data.settings.name} /> : null}
       <WifiForm settings={data.settings} />
       <DuesLedger data={data} />
       <FeedbackInbox rows={data.feedback} />
@@ -2261,7 +2395,15 @@ function NumberField({ label, value, onChange }: { label: string; value: string;
 
 const WEAPONS = ["", "Bo staff", "Kama", "Sai", "Nunchaku", "Tonfa", "Sword", "Escrima sticks", "Other"] as const;
 
-function StudentEditor({ existing, staff }: { existing?: Student; staff: boolean }) {
+function StudentEditor({
+  existing,
+  staff,
+  onAdded,
+}: {
+  existing?: Student;
+  staff: boolean;
+  onAdded?: (name: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useCurrentUserState();
@@ -2303,8 +2445,14 @@ function StudentEditor({ existing, staff }: { existing?: Student; staff: boolean
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["portal"] });
       setOpen(false);
+      if (!existing) onAdded?.(form.student_name.trim().split(/\s+/)[0] || form.student_name);
     },
   });
+  const hasTournament = Boolean(
+    existing &&
+      (existing.events || existing.skill || existing.style || existing.weapon || existing.wins || existing.losses ||
+        existing.other_gold || existing.other_silver || existing.other_bronze),
+  );
   const preview = circuitDivisions({
     belt: form.belt,
     age: form.age ? Number(form.age) : null,
@@ -2396,8 +2544,8 @@ function StudentEditor({ existing, staff }: { existing?: Student; staff: boolean
             </div>
           </div>
           {photoError ? <p className="text-sm text-gold">{photoError}</p> : null}
-          <Field label="Athlete" value={form.student_name} onChange={(student_name) => setForm({ ...form, student_name })} />
-          <SelectField label="Belt" value={form.belt} onChange={(belt) => setForm({ ...form, belt })} options={BELTS} />
+          <Field label="Athlete name *" value={form.student_name} onChange={(student_name) => setForm({ ...form, student_name })} />
+          <SelectField label="Belt *" value={form.belt} onChange={(belt) => setForm({ ...form, belt })} options={BELTS} />
           <Field label="Age" value={form.age} onChange={(age) => setForm({ ...form, age })} />
           <label className="block">
             <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Girl or boy</span>
@@ -2407,114 +2555,125 @@ function StudentEditor({ existing, staff }: { existing?: Student; staff: boolean
               <option value="boy">Boy</option>
             </select>
           </label>
-          {black ? (
-            <label className="block">
-              <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Black belt forms</span>
-              <select value={form.style} onChange={(event) => setForm({ ...form, style: event.target.value })} className={field}>
-                <option value="">Not set</option>
-                {CIRCUIT_STYLES.map((style) => (
-                  <option key={style} value={style}>
-                    {STYLE_LABEL[style]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <label className="block">
-              <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Underbelt skill</span>
-              <select value={form.skill} onChange={(event) => setForm({ ...form, skill: event.target.value })} className={field}>
-                <option value="">Not set</option>
-                {CIRCUIT_SKILLS.map((skill) => (
-                  <option key={skill} value={skill}>
-                    {SKILL_LABEL[skill]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <div>
-            <p className="mb-1 text-xs tracking-[0.14em] text-mute uppercase">They enter</p>
-            <div className="flex flex-wrap gap-2">
-              {CIRCUIT_EVENTS.map((event) => {
-                const on = picked.includes(event);
-                return (
-                  <button
-                    key={event}
-                    type="button"
-                    aria-pressed={on}
-                    className={"min-h-11 rounded-full px-4 text-sm " + (on ? "bg-blue text-ink" : "border border-line text-mute")}
-                    onClick={() => {
-                      const next = new Set(picked);
-                      if (on) next.delete(event);
-                      else next.add(event);
-                      setForm({ ...form, events: CIRCUIT_EVENTS.filter((item) => next.has(item)).join(",") });
-                    }}
-                  >
-                    {event}
-                  </button>
-                );
-              })}
+          <details open={hasTournament} className="group rounded-xl border border-line">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold">
+              <span>
+                Tournament details <span className="font-normal text-mute">(optional)</span>
+              </span>
+              <span className="text-mute group-open:rotate-180">⌄</span>
+            </summary>
+            <div className="grid gap-3 px-3 pb-3">
+              {black ? (
+                <label className="block">
+                  <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Black belt forms</span>
+                  <select value={form.style} onChange={(event) => setForm({ ...form, style: event.target.value })} className={field}>
+                    <option value="">Not set</option>
+                    {CIRCUIT_STYLES.map((style) => (
+                      <option key={style} value={style}>
+                        {STYLE_LABEL[style]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label className="block">
+                  <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Skill level</span>
+                  <select value={form.skill} onChange={(event) => setForm({ ...form, skill: event.target.value })} className={field}>
+                    <option value="">Not set</option>
+                    {CIRCUIT_SKILLS.map((skill) => (
+                      <option key={skill} value={skill}>
+                        {SKILL_LABEL[skill]}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="mt-1 block text-xs text-mute">New to tournaments? Pick Novice. Your coach can help you choose.</span>
+                </label>
+              )}
+              <div>
+                <p className="mb-1 text-xs tracking-[0.14em] text-mute uppercase">Events they compete in</p>
+                <div className="flex flex-wrap gap-2">
+                  {CIRCUIT_EVENTS.map((event) => {
+                    const on = picked.includes(event);
+                    return (
+                      <button
+                        key={event}
+                        type="button"
+                        aria-pressed={on}
+                        className={"min-h-11 rounded-full px-4 text-sm " + (on ? "bg-blue text-ink" : "border border-line text-mute")}
+                        onClick={() => {
+                          const next = new Set(picked);
+                          if (on) next.delete(event);
+                          else next.add(event);
+                          setForm({ ...form, events: CIRCUIT_EVENTS.filter((item) => next.has(item)).join(",") });
+                        }}
+                      >
+                        {event}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {black && picked.includes("Point Fighting") && Number(form.age) >= 17 && form.gender === "boy" ? (
+                <label className="block">
+                  <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Men’s weight</span>
+                  <select value={form.weight_class} onChange={(event) => setForm({ ...form, weight_class: event.target.value })} className={field}>
+                    <option value="">Not set</option>
+                    <option value="light">Light, 175 and under</option>
+                    <option value="heavy">Heavy, over 175</option>
+                  </select>
+                </label>
+              ) : null}
+              {preview.length ? (
+                <ul className="rounded-xl border border-line px-3 py-3 text-sm">
+                  {preview.map((line) => (
+                    <li key={line.event}>
+                      <span className="text-mute">{line.event}: </span>
+                      {line.division || line.note}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <label className="block">
+                <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Weapon</span>
+                <select
+                  value={form.weapon ? weaponChoice : ""}
+                  onChange={(event) => setForm({ ...form, weapon: event.target.value === "Other" ? "Other" : event.target.value })}
+                  className={field}
+                >
+                  {WEAPONS.map((weapon) => (
+                    <option key={weapon} value={weapon}>
+                      {weapon || "None"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {form.weapon && weaponChoice === "Other" ? (
+                <Field
+                  label="Which weapon"
+                  value={form.weapon === "Other" ? "" : form.weapon}
+                  onChange={(weapon) => setForm({ ...form, weapon: weapon || "Other" })}
+                />
+              ) : null}
+              <fieldset className="rounded-xl border border-line px-3 pt-2 pb-3">
+                <legend className="px-1 text-xs tracking-[0.14em] text-mute uppercase">Fight record</legend>
+                <div className="grid grid-cols-2 gap-3">
+                  <NumberField label="Wins" value={form.wins} onChange={(wins) => setForm({ ...form, wins })} />
+                  <NumberField label="Losses" value={form.losses} onChange={(losses) => setForm({ ...form, losses })} />
+                </div>
+              </fieldset>
+              <fieldset className="rounded-xl border border-line px-3 pt-2 pb-3">
+                <legend className="px-1 text-xs tracking-[0.14em] text-mute uppercase">Medals outside MSKC</legend>
+                <p className="mb-2 text-xs text-mute">MSKC medals count on their own from the results instructors post.</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <NumberField label="Gold" value={form.other_gold} onChange={(other_gold) => setForm({ ...form, other_gold })} />
+                  <NumberField label="Silver" value={form.other_silver} onChange={(other_silver) => setForm({ ...form, other_silver })} />
+                  <NumberField label="Bronze" value={form.other_bronze} onChange={(other_bronze) => setForm({ ...form, other_bronze })} />
+                </div>
+              </fieldset>
             </div>
-          </div>
-          {black && picked.includes("Point Fighting") && Number(form.age) >= 17 && form.gender === "boy" ? (
-            <label className="block">
-              <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Men’s weight</span>
-              <select value={form.weight_class} onChange={(event) => setForm({ ...form, weight_class: event.target.value })} className={field}>
-                <option value="">Not set</option>
-                <option value="light">Light, 175 and under</option>
-                <option value="heavy">Heavy, over 175</option>
-              </select>
-            </label>
-          ) : null}
-          {preview.length ? (
-            <ul className="rounded-xl border border-line px-3 py-3 text-sm">
-              {preview.map((line) => (
-                <li key={line.event}>
-                  <span className="text-mute">{line.event}: </span>
-                  {line.division || line.note}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <label className="block">
-            <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Weapon</span>
-            <select
-              value={form.weapon ? weaponChoice : ""}
-              onChange={(event) => setForm({ ...form, weapon: event.target.value === "Other" ? "Other" : event.target.value })}
-              className={field}
-            >
-              {WEAPONS.map((weapon) => (
-                <option key={weapon} value={weapon}>
-                  {weapon || "None"}
-                </option>
-              ))}
-            </select>
-          </label>
-          {form.weapon && weaponChoice === "Other" ? (
-            <Field
-              label="Which weapon"
-              value={form.weapon === "Other" ? "" : form.weapon}
-              onChange={(weapon) => setForm({ ...form, weapon: weapon || "Other" })}
-            />
-          ) : null}
-          <fieldset className="rounded-xl border border-line px-3 pt-2 pb-3">
-            <legend className="px-1 text-xs tracking-[0.14em] text-mute uppercase">Fight record</legend>
-            <div className="grid grid-cols-2 gap-3">
-              <NumberField label="Wins" value={form.wins} onChange={(wins) => setForm({ ...form, wins })} />
-              <NumberField label="Losses" value={form.losses} onChange={(losses) => setForm({ ...form, losses })} />
-            </div>
-          </fieldset>
-          <fieldset className="rounded-xl border border-line px-3 pt-2 pb-3">
-            <legend className="px-1 text-xs tracking-[0.14em] text-mute uppercase">Medals outside MSKC</legend>
-            <p className="mb-2 text-xs text-mute">MSKC medals count on their own from the results instructors post.</p>
-            <div className="grid grid-cols-3 gap-3">
-              <NumberField label="Gold" value={form.other_gold} onChange={(other_gold) => setForm({ ...form, other_gold })} />
-              <NumberField label="Silver" value={form.other_silver} onChange={(other_silver) => setForm({ ...form, other_silver })} />
-              <NumberField label="Bronze" value={form.other_bronze} onChange={(other_bronze) => setForm({ ...form, other_bronze })} />
-            </div>
-          </fieldset>
+          </details>
           <Field
-            label={staff ? "Parent" : "Parent name"}
+            label={staff ? "Parent *" : "Parent name *"}
             value={form.parent_name}
             onChange={(parent_name) => setForm({ ...form, parent_name })}
           />
@@ -2524,6 +2683,7 @@ function StudentEditor({ existing, staff }: { existing?: Student; staff: boolean
             <p className="text-sm text-mute">This card is linked to the email you signed in with.</p>
           )}
           <Field label="Parent phone" value={form.parent_phone} onChange={(parent_phone) => setForm({ ...form, parent_phone })} />
+          <p className="-mt-1 text-xs text-mute">Parent names, phones, and emails show on the roster so team families can reach each other.</p>
           <fieldset className="rounded-xl border border-line px-3 pt-2 pb-3">
             <legend className="px-1 text-xs tracking-[0.14em] text-mute uppercase">Second parent (optional)</legend>
             <p className="mb-2 text-xs text-mute">

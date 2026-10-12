@@ -36,6 +36,7 @@ import { getCookie } from "@tanstack/react-start/server";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
+import { mailConfigured, sendPasswordReset } from "@/lib/mail.server";
 import { emailAndPasswordEnabled } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
@@ -219,7 +220,26 @@ export const auth = betterAuth({
   session: { cookieCache: { enabled: true, maxAge: 300 } },
 
   // Local email/password — toggled only via `./email-password` (not a plugin).
-  ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+  ...(emailAndPasswordEnabled
+    ? {
+        emailAndPassword: {
+          enabled: true,
+          // Password reset by email only when SMTP is configured (see mail.server.ts).
+          ...(mailConfigured()
+            ? {
+                resetPasswordTokenExpiresIn: 60 * 60,
+                sendResetPassword: async ({ user, url }: { user: { email: string; name?: string | null }; url: string }) => {
+                  try {
+                    await sendPasswordReset(user.email, user.name ?? "", url);
+                  } catch (error) {
+                    console.error("[auth] reset email failed:", error instanceof Error ? error.message : error);
+                  }
+                },
+              }
+            : {}),
+        },
+      }
+    : {}),
   ...(googleConfigured
     ? {
         socialProviders: {
