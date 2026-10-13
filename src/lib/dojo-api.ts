@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { pointsFor } from "@/lib/dojo";
+import { pointsFor, DISCIPLINES, parseEvents } from "@/lib/dojo";
 
 type Role = "member" | "instructor" | "owner";
 
@@ -858,6 +858,13 @@ function emailOrEmpty(value: unknown, label: string): string {
   return raw;
 }
 
+function disciplineOf(value: unknown): string {
+  const raw = required(value, "Discipline", 30);
+  const clean = raw === "Sparring" ? "Point Sparring" : raw;
+  if (!(DISCIPLINES as readonly string[]).includes(clean)) throw new Error("Pick forms, weapons, point sparring, or continuous sparring");
+  return clean;
+}
+
 function count(value: unknown, label: string): number {
   const raw = String(value ?? "").trim();
   if (!raw) return 0;
@@ -911,7 +918,7 @@ export const upsertStudent = createServerFn({ method: "POST" })
     if (style && style !== "TRAD" && style !== "OPEN") throw new Error("Pick traditional or open");
     const weight_class = text(raw.weight_class, 8);
     if (weight_class && weight_class !== "light" && weight_class !== "heavy") throw new Error("Pick a weight class");
-    const events = ["Forms", "Weapons", "Point Fighting"].filter((event) => text(raw.events, 80).split(",").map((part) => part.trim()).includes(event)).join(",");
+    const events = parseEvents(text(raw.events, 120)).join(",");
     return {
       id,
       student_name: required(raw.student_name, "Athlete", 80),
@@ -1105,6 +1112,19 @@ export const sendFeedback = createServerFn({ method: "POST" })
       insert into site_feedback (user_id, author_name, author_email, kind, page, message)
       values (${context.userId}, ${name}, ${email}, ${data.kind}, ${data.page}, ${data.message})
     `;
+    // Email the owner so new notes are seen without opening the Desk. A mail
+    // problem never blocks saving the note.
+    try {
+      const mail = await import("./mail.server");
+      if (mail.mailConfigured()) {
+        const { env } = await import("./env.server");
+        const owner = await sql<{ owner_email: string }>`select owner_email from dojo_settings where id = 1`;
+        const to = env("FEEDBACK_NOTIFY_TO") ?? owner[0]?.owner_email?.trim();
+        if (to) await mail.sendFeedbackNotice(to, { kind: data.kind, page: data.page, message: data.message, name, email });
+      }
+    } catch (error) {
+      console.error("[feedback] notice email failed:", error instanceof Error ? error.message : error);
+    }
     return { ok: true };
   });
 
@@ -1201,7 +1221,7 @@ export const upsertResult = createServerFn({ method: "POST" })
       id,
       student_name: required(raw.student_name, "Athlete", 80),
       division: required(raw.division, "Division", 80),
-      discipline: required(raw.discipline, "Discipline", 20),
+      discipline: disciplineOf(raw.discipline),
       event_name: required(raw.event_name, "Event", 120),
       event_date,
       rating,

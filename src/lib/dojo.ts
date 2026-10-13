@@ -32,7 +32,7 @@ export const BELTS = [
   "Black",
 ] as const;
 
-export const DISCIPLINES = ["Forms", "Weapons", "Sparring"] as const;
+export const DISCIPLINES = ["Forms", "Weapons", "Point Sparring", "Continuous Sparring"] as const;
 export const RATINGS = ["AAA", "AA", "A"] as const;
 
 const POINTS: Record<string, number[]> = {
@@ -161,7 +161,7 @@ export function formatDay(iso: string): string {
 
 export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
-export const CIRCUIT_EVENTS = ["Forms", "Weapons", "Point Fighting"] as const;
+export const CIRCUIT_EVENTS = ["Forms", "Weapons", "Point Sparring", "Continuous Sparring"] as const;
 export const CIRCUIT_SKILLS = ["NOV", "INT", "ADV"] as const;
 export const CIRCUIT_STYLES = ["TRAD", "OPEN"] as const;
 
@@ -181,9 +181,9 @@ export const MSKC_DOCS = [
     label: "Kata and weapons",
     href: "http://mskctour.com/Forms/MSKC%20Kata%20and%20Weapons%20Rules%20and%20Divisions%20R2.pdf",
   },
-  { label: "Point fighting", href: "http://mskctour.com/Forms/MSKC-point-sparring-rules2025.pdf" },
+  { label: "Point sparring", href: "http://mskctour.com/Forms/MSKC-point-sparring-rules2025.pdf" },
   { label: "Scoring areas", href: "http://mskctour.com/Forms/SZ.pdf" },
-  { label: "Light contact", href: "http://mskctour.com/Forms/Continuous-sparring-rules-MSKC-2019.pdf" },
+  { label: "Continuous sparring", href: "http://mskctour.com/Forms/Continuous-sparring-rules-MSKC-2019.pdf" },
 ] as const;
 
 export type CircuitProfile = {
@@ -203,6 +203,8 @@ export function parseEvents(value: string): string[] {
     value
       .split(",")
       .map((part) => part.trim())
+      // Older cards stored point sparring as "Point Fighting".
+      .map((part) => (part === "Point Fighting" ? "Point Sparring" : part))
       .filter(Boolean),
   );
   return CIRCUIT_EVENTS.filter((event) => picked.has(event));
@@ -247,10 +249,10 @@ function underbeltWeapons(age: number, skill: string): CircuitLine {
 }
 
 function underbeltFighting(age: number, skill: string, gender: string): CircuitLine {
-  const event = "Point Fighting";
+  const event = "Point Sparring";
   if (age <= 5) return placed(event, "5 and under Girls/Boys");
   if (age === 6) {
-    if (skill !== "NOV") return missing(event, "Age 6 point fighting is novice only, girls and boys together.");
+    if (skill !== "NOV") return missing(event, "Age 6 point sparring is novice only, girls and boys together.");
     return placed(event, "6 NOV Girls/Boys");
   }
   const who = side(gender, age);
@@ -280,7 +282,7 @@ function blackbeltForms(age: number, style: string, gender: string, event: strin
 }
 
 function blackbeltFighting(age: number, gender: string, weight: string): CircuitLine {
-  const event = "Point Fighting";
+  const event = "Point Sparring";
   const who = side(gender, age);
   if (!who) return missing(event, "Pick girl or boy.");
   if (age >= 35) return placed(event, `35+ ${who}`);
@@ -294,6 +296,12 @@ function blackbeltFighting(age: number, gender: string, weight: string): Circuit
   return placed(event, `${label} ${who}`, note);
 }
 
+// MSKC does not publish a continuous sparring division chart; brackets are set
+// at each event under the continuous (light contact) rules.
+function continuousNote(): CircuitLine {
+  return missing("Continuous Sparring", "Divisions are set at each event. See the continuous sparring rules.");
+}
+
 export function circuitDivisions(profile: CircuitProfile): CircuitLine[] {
   const events = parseEvents(profile.events);
   if (!events.length) return [];
@@ -304,11 +312,13 @@ export function circuitDivisions(profile: CircuitProfile): CircuitLine[] {
   const black = profile.belt === "Black";
   return events.map((event) => {
     if (black) {
-      if (event === "Point Fighting") return blackbeltFighting(age, profile.gender, profile.weight_class);
+      if (event === "Continuous Sparring") return continuousNote();
+      if (event === "Point Sparring") return blackbeltFighting(age, profile.gender, profile.weight_class);
       return blackbeltForms(age, profile.style, profile.gender, event);
     }
     if (event === "Forms") return underbeltForms(age, profile.skill);
     if (event === "Weapons") return underbeltWeapons(age, profile.skill);
+    if (event === "Continuous Sparring") return continuousNote();
     return underbeltFighting(age, profile.skill, profile.gender);
   });
 }

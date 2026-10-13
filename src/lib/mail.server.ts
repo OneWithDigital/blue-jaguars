@@ -32,7 +32,13 @@ function transporter(): Transporter {
   return transport;
 }
 
-export async function sendMail(message: { to: string; subject: string; text: string; html: string }): Promise<void> {
+export async function sendMail(message: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  replyTo?: string;
+}): Promise<void> {
   if (!mailConfigured()) throw new Error("Email is not set up on this server");
   await transporter().sendMail({ from: env("MAIL_FROM"), ...message });
 }
@@ -53,6 +59,36 @@ export async function sendPasswordReset(to: string, name: string, url: string): 
 <p><a href="${escapeHtml(url)}" style="display:inline-block;background:#3c8dff;color:#06101f;font-weight:bold;text-decoration:none;padding:12px 20px;border-radius:8px">Choose a new password</a></p>
 <p style="color:#555;font-size:14px">If you did not ask for this, you can ignore this email. Your password stays the same.</p>
 <p style="color:#555;font-size:14px">Blue Jaguars Sports Karate</p>
+</div>`,
+  });
+}
+
+const KIND_NAME: Record<string, string> = { idea: "Idea", problem: "Problem", other: "Other" };
+
+/**
+ * Tell the site owner a family sent feedback. The subject always starts with
+ * "[Blue Jaguars feedback]" so it can be filtered and picked up for updates.
+ */
+export async function sendFeedbackNotice(to: string, note: {
+  kind: string;
+  page: string;
+  message: string;
+  name: string;
+  email: string;
+}): Promise<void> {
+  const kind = KIND_NAME[note.kind] ?? "Note";
+  const where = note.page ? ` · ${note.page}` : "";
+  const who = [note.name, note.email].filter(Boolean).join(" · ") || "A team member";
+  await sendMail({
+    to,
+    replyTo: note.email || undefined,
+    subject: `[Blue Jaguars feedback] ${kind}${where}`,
+    text: `${kind}${where}\nFrom: ${who}\n\n${note.message}\n\nSee all notes on the Desk: https://bluejaguarskarate.com/app?section=desk`,
+    html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#111;max-width:560px">
+<p style="margin:0 0 4px;color:#555;font-size:13px;text-transform:uppercase;letter-spacing:.08em">${escapeHtml(kind + where)}</p>
+<p style="margin:0 0 16px;color:#555;font-size:14px">From ${escapeHtml(who)}</p>
+<p style="white-space:pre-wrap;margin:0 0 20px">${escapeHtml(note.message)}</p>
+<p style="font-size:14px"><a href="https://bluejaguarskarate.com/app?section=desk">See all notes on the Desk</a></p>
 </div>`,
   });
 }
