@@ -24,7 +24,7 @@ import {
 const field =
   "w-full rounded-lg border border-line bg-ink px-3 py-3 text-base text-paper outline-none focus:border-blue";
 
-const DISCIPLINE_OPTIONS = ["", "Forms", "Weapons", "Sparring", "Class"] as const;
+const DISCIPLINE_OPTIONS = ["", "Forms", "Weapons", "Point Sparring", "Continuous Sparring", "Class"] as const;
 
 function paint(source: CanvasImageSource, width: number, height: number, max: number, quality: number) {
   const scale = Math.min(1, max / Math.max(width, height));

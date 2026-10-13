@@ -2613,7 +2613,7 @@ function StudentEditor({
                   })}
                 </div>
               </div>
-              {black && picked.includes("Point Fighting") && Number(form.age) >= 17 && form.gender === "boy" ? (
+              {black && picked.includes("Point Sparring") && Number(form.age) >= 17 && form.gender === "boy" ? (
                 <label className="block">
                   <span className="mb-1 block text-xs tracking-[0.14em] text-mute uppercase">Men’s weight</span>
                   <select value={form.weight_class} onChange={(event) => setForm({ ...form, weight_class: event.target.value })} className={field}>
@@ -2748,7 +2748,7 @@ function VendorEditor({ existing }: { existing?: Vendor }) {
 function suggestedDivision(students: Student[], name: string, discipline: string): string {
   const student = students.find((row) => row.student_name === name);
   if (!student) return "";
-  const event = discipline === "Sparring" ? "Point Fighting" : discipline;
+  const event = discipline === "Sparring" ? "Point Sparring" : discipline;
   return circuitDivisions(student).find((line) => line.event === event)?.division ?? "";
 }
 
