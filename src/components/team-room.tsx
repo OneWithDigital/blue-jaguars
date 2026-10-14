@@ -1140,7 +1140,7 @@ function Roster({ data }: { data: PortalData }) {
       <PageHead
         kicker="Athletes and parents"
         title="Roster"
-        action={<StudentEditor staff={staff} onAdded={setJustAdded} />}
+        action={<StudentEditor staff={staff} onAdded={setJustAdded} family={staff ? undefined : mine[0]} />}
       />
       {justAdded ? (
         <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue/50 bg-blue/10 px-4 py-4">
@@ -1842,35 +1842,63 @@ function DuesLedger({ data }: { data: PortalData }) {
   );
 }
 
+function familyKey(student: Student) {
+  return (student.parent_email.trim().toLowerCase() || `name:${student.parent_name.trim().toLowerCase()}`) || `id:${student.id}`;
+}
+
 function KeyRoster({ data }: { data: PortalData }) {
-  const save = useSave<{ student_id: number; has_key: boolean }>((input) => setKey({ data: input }));
-  const holders = data.students.filter((student) => student.has_key);
+  const queryClient = useQueryClient();
+  // A key belongs to a family, so brothers and sisters share one row.
+  const families = useMemo(() => {
+    const groups = new Map<string, Student[]>();
+    for (const student of data.students) {
+      const key = familyKey(student);
+      groups.set(key, [...(groups.get(key) ?? []), student]);
+    }
+    return [...groups.values()].sort((a, b) => a[0].parent_name.localeCompare(b[0].parent_name));
+  }, [data.students]);
+  const save = useMutation({
+    mutationFn: async ({ ids, has_key }: { ids: number[]; has_key: boolean }) => {
+      for (const student_id of ids) await setKey({ data: { student_id, has_key } });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["portal"] });
+    },
+  });
+  const holders = families.filter((group) => group.some((student) => student.has_key));
   return (
     <section>
       <h2 className="mb-1 flex items-center gap-2 font-display text-3xl tracking-wide">
         <KeyRound className="size-6 text-gold" /> Keys
       </h2>
       <p className="mb-3 max-w-2xl text-sm text-mute">
-        {holders.length ? holders.map((student) => student.parent_name).join(", ") : "No parents are marked with a key yet."}
+        {holders.length ? holders.map((group) => group[0].parent_name).join(", ") : "No parents are marked with a key yet."}
       </p>
       <ul className="divide-y divide-line rounded-2xl border border-line">
-        {data.students.map((student) => (
-          <li key={student.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-            <span>
-              <span className="block">{student.parent_name}</span>
-              <span className="text-mute">{student.student_name}{student.parent_phone ? ` · ${student.parent_phone}` : ""}</span>
-            </span>
-            <button
-              type="button"
-              disabled={save.isPending}
-              aria-pressed={student.has_key}
-              onClick={() => save.mutate({ student_id: student.id, has_key: !student.has_key })}
-              className={"min-h-11 rounded-full px-4 font-semibold " + (student.has_key ? "bg-blue text-ink" : "border border-line text-mute")}
-            >
-              {student.has_key ? "Has a key" : "No key"}
-            </button>
-          </li>
-        ))}
+        {families.map((group) => {
+          const first = group[0];
+          const hasKey = group.some((student) => student.has_key);
+          return (
+            <li key={familyKey(first)} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+              <span>
+                <span className="block">{first.parent_name}</span>
+                <span className="text-mute">
+                  {group.map((student) => student.student_name).join(", ")}
+                  {first.parent_phone ? ` · ${first.parent_phone}` : ""}
+                </span>
+              </span>
+              <button
+                type="button"
+                disabled={save.isPending}
+                aria-pressed={hasKey}
+                onClick={() => save.mutate({ ids: group.map((student) => student.id), has_key: !hasKey })}
+                className={"min-h-11 rounded-full px-4 font-semibold " + (hasKey ? "bg-blue text-ink" : "border border-line text-mute")}
+              >
+                {hasKey ? "Has a key" : "No key"}
+              </button>
+            </li>
+          );
+        })}
       </ul>
       {save.isError ? <p className="mt-2 text-sm text-gold">{errText(save.error)}</p> : null}
     </section>
@@ -2399,10 +2427,13 @@ function StudentEditor({
   existing,
   staff,
   onAdded,
+  family,
 }: {
   existing?: Student;
   staff: boolean;
   onAdded?: (name: string) => void;
+  /** A parent's athlete already on the roster: brothers and sisters start with the same family details. */
+  family?: Student;
 }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -2416,12 +2447,12 @@ function StudentEditor({
     style: existing?.style ?? "",
     events: existing?.events ?? "",
     weight_class: existing?.weight_class ?? "",
-    parent_name: existing?.parent_name ?? (staff ? "" : (user?.displayName ?? "")),
+    parent_name: existing?.parent_name ?? family?.parent_name ?? (staff ? "" : (user?.displayName ?? "")),
     parent_email: existing?.parent_email ?? "",
-    parent_phone: existing?.parent_phone ?? "",
-    parent2_name: existing?.parent2_name ?? "",
-    parent2_email: existing?.parent2_email ?? "",
-    parent2_phone: existing?.parent2_phone ?? "",
+    parent_phone: existing?.parent_phone ?? family?.parent_phone ?? "",
+    parent2_name: existing?.parent2_name ?? family?.parent2_name ?? "",
+    parent2_email: existing?.parent2_email ?? family?.parent2_email ?? "",
+    parent2_phone: existing?.parent2_phone ?? family?.parent2_phone ?? "",
     notes: existing?.notes ?? "",
     has_key: existing?.has_key ?? false,
     weapon: existing?.weapon ?? "",
