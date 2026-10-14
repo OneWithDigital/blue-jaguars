@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetRouteImport } from './routes/reset'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiExpenseReceiptIdRouteImport } from './routes/api/expense-receipt/$id'
 import { Route as ApiStudentPhotoIdRouteImport } from './routes/api/student-photo/$id'
 import { Route as ApiYoutubeCallbackRouteImport } from './routes/api/youtube/callback'
 import { Route as ApiYoutubeConnectRouteImport } from './routes/api/youtube/connect'
@@ -55,6 +56,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiExpenseReceiptIdRoute = ApiExpenseReceiptIdRouteImport.update({
+  id: '/api/expense-receipt/$id',
+  path: '/api/expense-receipt/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiStudentPhotoIdRoute = ApiStudentPhotoIdRouteImport.update({
   id: '/api/student-photo/$id',
   path: '/api/student-photo/$id',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/reset': typeof ResetRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/expense-receipt/$id': typeof ApiExpenseReceiptIdRoute
   '/api/student-photo/$id': typeof ApiStudentPhotoIdRoute
   '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
   '/api/youtube/connect': typeof ApiYoutubeConnectRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/reset': typeof ResetRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/expense-receipt/$id': typeof ApiExpenseReceiptIdRoute
   '/api/student-photo/$id': typeof ApiStudentPhotoIdRoute
   '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
   '/api/youtube/connect': typeof ApiYoutubeConnectRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/reset': typeof ResetRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/expense-receipt/$id': typeof ApiExpenseReceiptIdRoute
   '/api/student-photo/$id': typeof ApiStudentPhotoIdRoute
   '/api/youtube/callback': typeof ApiYoutubeCallbackRoute
   '/api/youtube/connect': typeof ApiYoutubeConnectRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reset'
     | '/api/auth/$'
+    | '/api/expense-receipt/$id'
     | '/api/student-photo/$id'
     | '/api/youtube/callback'
     | '/api/youtube/connect'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reset'
     | '/api/auth/$'
+    | '/api/expense-receipt/$id'
     | '/api/student-photo/$id'
     | '/api/youtube/callback'
     | '/api/youtube/connect'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reset'
     | '/api/auth/$'
+    | '/api/expense-receipt/$id'
     | '/api/student-photo/$id'
     | '/api/youtube/callback'
     | '/api/youtube/connect'
@@ -155,6 +167,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   ResetRoute: typeof ResetRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiExpenseReceiptIdRoute: typeof ApiExpenseReceiptIdRoute
   ApiStudentPhotoIdRoute: typeof ApiStudentPhotoIdRoute
   ApiYoutubeCallbackRoute: typeof ApiYoutubeCallbackRoute
   ApiYoutubeConnectRoute: typeof ApiYoutubeConnectRoute
@@ -211,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/expense-receipt/$id': {
+      id: '/api/expense-receipt/$id'
+      path: '/api/expense-receipt/$id'
+      fullPath: '/api/expense-receipt/$id'
+      preLoaderRoute: typeof ApiExpenseReceiptIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/student-photo/$id': {
       id: '/api/student-photo/$id'
       path: '/api/student-photo/$id'
@@ -243,6 +263,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   ResetRoute: ResetRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiExpenseReceiptIdRoute: ApiExpenseReceiptIdRoute,
   ApiStudentPhotoIdRoute: ApiStudentPhotoIdRoute,
   ApiYoutubeCallbackRoute: ApiYoutubeCallbackRoute,
   ApiYoutubeConnectRoute: ApiYoutubeConnectRoute,

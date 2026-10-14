@@ -12,6 +12,7 @@ export const SECTIONS = [
   "roster",
   "gear",
   "desk",
+  "books",
 ] as const;
 
 export type Section = (typeof SECTIONS)[number];
