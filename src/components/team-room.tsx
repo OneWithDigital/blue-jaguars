@@ -23,6 +23,7 @@ import {
   UserPlus,
   Trophy,
   Users,
+  Wallet,
   Wifi,
   X,
 } from "lucide-react";
@@ -103,8 +104,9 @@ import { Boot, errText } from "@/components/boot";
 import { Gallery, LatestFilm } from "@/components/gallery";
 import { FeedbackButton, FeedbackInbox, FeedbackSheet, TourButton, WelcomeTour } from "@/components/welcome";
 import { JoinLinkCard } from "@/components/join-link";
+import { Books } from "@/components/books";
 
-const NAV: { id: Section; label: string; icon: typeof LayoutGrid; staff?: boolean }[] = [
+const NAV: { id: Section; label: string; icon: typeof LayoutGrid; staff?: boolean; owner?: boolean }[] = [
   { id: "home", label: "Floor", icon: LayoutGrid },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "board", label: "Board", icon: MessageSquare },
@@ -115,6 +117,7 @@ const NAV: { id: Section; label: string; icon: typeof LayoutGrid; staff?: boolea
   { id: "roster", label: "Roster", icon: Users },
   { id: "gear", label: "Gear", icon: ShoppingBag },
   { id: "desk", label: "Desk", icon: Settings, staff: true },
+  { id: "books", label: "Books", icon: Wallet, owner: true },
 ];
 
 const field =
@@ -226,7 +229,7 @@ export function TeamRoom({ section }: { section: Section }) {
   if (!query.data) return <Boot label="Opening the team room" />;
 
   const data = query.data;
-  const items = NAV.filter((item) => !item.staff || isStaff(data.role));
+  const items = NAV.filter((item) => (!item.staff || isStaff(data.role)) && (!item.owner || data.role === "owner"));
 
   return (
     <div className="min-h-screen bg-ink text-paper lg:grid lg:grid-cols-[16rem_1fr]">
@@ -284,6 +287,9 @@ export function TeamRoom({ section }: { section: Section }) {
           {section === "roster" ? <Roster data={data} /> : null}
           {section === "gear" ? <Gear data={data} /> : null}
           {section === "desk" ? <Desk data={data} /> : null}
+          {section === "books" ? (
+            data.role === "owner" ? <Books /> : <p className="text-mute">The books are for the owner only.</p>
+          ) : null}
         </main>
       </div>
       <WelcomeTour open={tourOpen} onOpenChange={setTourOpen} onFeedback={() => setFeedbackOpen(true)} />
