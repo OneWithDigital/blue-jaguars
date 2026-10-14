@@ -440,7 +440,8 @@ export const getPortal = createServerFn({ method: "GET" })
     const attendance = await sql<AttendanceMark>`
       select student_id, day::text as day, going
       from attendance
-      where day >= current_date - 1 and day < current_date + 14
+      -- Cover the whole week on screen (Sunday start) plus timezone slack.
+      where day >= current_date - 8 and day < current_date + 14
       order by day, student_id
     `;
     const usual = await sql<UsualMark>`
