@@ -187,6 +187,20 @@ export const MSKC_DOCS = [
   { label: "Continuous sparring", href: "http://mskctour.com/Forms/Continuous-sparring-rules-MSKC-2019.pdf" },
 ] as const;
 
+/** Where families sign up for tournaments. Each event's flyer says which one it uses. */
+export const REGISTRATION_SITES = [
+  {
+    name: "MAT Action",
+    href: "https://www.mataction.com/en/CompeteKarate",
+    blurb: "Karate tournament listings and online sign-up.",
+  },
+  {
+    name: "Odyn Technologies",
+    href: "https://odyntech.com/",
+    blurb: "Online registration used by many circuit events.",
+  },
+] as const;
+
 export type CircuitProfile = {
   belt: string;
   age: number | null;
