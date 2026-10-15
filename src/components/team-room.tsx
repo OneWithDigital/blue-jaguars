@@ -38,6 +38,7 @@ import {
   CIRCUIT_STYLES,
   DISCIPLINES,
   MSKC_DOCS,
+  REGISTRATION_SITES,
   RATINGS,
   SKILL_LABEL,
   STYLE_LABEL,
@@ -874,6 +875,30 @@ function Events({ data }: { data: PortalData }) {
         </Link>
         .
       </p>
+      <section className="mb-6 rounded-2xl border border-line bg-panel px-4 py-4">
+        <h2 className="font-display text-3xl tracking-wide">Register for a tournament</h2>
+        <p className="mt-1 text-sm text-mute">
+          Tournaments take entries online through these sites. Check the event flyer for which one it uses, then sign up and
+          pay there.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {REGISTRATION_SITES.map((site) => (
+            <a
+              key={site.href}
+              href={site.href}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-line px-4 py-3 hover:border-blue"
+            >
+              <span>
+                <span className="block font-semibold">{site.name}</span>
+                <span className="block text-sm text-mute">{site.blurb}</span>
+              </span>
+              <ExternalLink className="size-4 shrink-0 text-gold" />
+            </a>
+          ))}
+        </div>
+      </section>
       <EventList title="Coming up" rows={upcoming} staff={staff} results={data.results} empty="No upcoming events. Add one, or check the MSKC calendar." />
       <div className="mt-8">
         <EventList title="Already run" rows={past} staff={staff} results={data.results} empty="No past events on the card." />
