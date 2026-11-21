@@ -1,0 +1,11 @@
+[Unit]
+Description=Blue Jaguars: check GitHub for a new main every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=15s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
