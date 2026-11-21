@@ -1,0 +1,12 @@
+[Unit]
+Description=Blue Jaguars: deploy when main changes on GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/blue-jaguars
+ExecStart=/usr/bin/env bash /var/www/blue-jaguars/scripts/auto-deploy.sh
+# A full build takes a few minutes; give it room but not forever.
+TimeoutStartSec=20min
+Nice=5
